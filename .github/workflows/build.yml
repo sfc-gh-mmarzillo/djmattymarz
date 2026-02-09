@@ -1,0 +1,74 @@
+name: Build and Upload to TestFlight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install Apple API Key
+        env:
+          API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$API_KEY_BASE64" | base64 --decode > ~/private_keys/AuthKey_${{ secrets.API_KEY_ID }}.p8
+
+      - name: Build Archive
+        run: |
+          xcodebuild archive \
+            -project SportsDJ.xcodeproj \
+            -scheme SportsDJ \
+            -destination "generic/platform=iOS" \
+            -archivePath build/SportsDJ.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.API_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.API_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ISSUER_ID }} \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }}
+
+      - name: Export IPA
+        run: |
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>destination</key>
+              <string>upload</string>
+              <key>teamID</key>
+              <string>${{ secrets.TEAM_ID }}</string>
+          </dict>
+          </plist>
+          EOF
+          
+          xcodebuild -exportArchive \
+            -archivePath build/SportsDJ.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.API_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.API_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ISSUER_ID }}
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file build/export/SportsDJ.ipa \
+            --apiKey ${{ secrets.API_KEY_ID }} \
+            --apiIssuer ${{ secrets.ISSUER_ID }}
