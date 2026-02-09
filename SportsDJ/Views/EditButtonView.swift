@@ -46,6 +46,11 @@ struct EditButtonView: View {
                         .font(.caption)
                         
                         Slider(value: $startTime, in: 0...max(songDuration, 1))
+                            .onChange(of: startTime) { _ in
+                                if audioPlayer.isPreviewing {
+                                    audioPlayer.seekPreview(to: startTime)
+                                }
+                            }
                         
                         HStack {
                             Button("-5s") { startTime = max(0, startTime - 5) }
@@ -54,10 +59,11 @@ struct EditButtonView: View {
                                 .buttonStyle(.bordered)
                             Spacer()
                             
-                            Button(action: previewFromStartPoint) {
-                                Image(systemName: "play.fill")
+                            Button(action: togglePreview) {
+                                Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
+                                    .font(.title)
+                                    .foregroundColor(audioPlayer.isPreviewing ? .red : .blue)
                             }
-                            .buttonStyle(.borderedProminent)
                             
                             Spacer()
                             Button("+1s") { startTime = min(songDuration, startTime + 1) }
@@ -127,7 +133,7 @@ struct EditButtonView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        audioPlayer.stop()
+                        audioPlayer.stopPreview()
                         dismiss()
                     }
                 }
@@ -151,7 +157,7 @@ struct EditButtonView: View {
                 loadButtonData()
             }
             .onDisappear {
-                audioPlayer.stop()
+                audioPlayer.stopPreview()
             }
         }
     }
@@ -181,10 +187,20 @@ struct EditButtonView: View {
         return String(format: "%d:%02d", mins, secs)
     }
     
-    func previewFromStartPoint() {
-        var previewButton = button
-        previewButton.startTimeSeconds = startTime
-        audioPlayer.play(button: previewButton)
+    func togglePreview() {
+        if audioPlayer.isPreviewing {
+            audioPlayer.stopPreview()
+        } else {
+            let predicate = MPMediaPropertyPredicate(
+                value: button.songPersistentID,
+                forProperty: MPMediaItemPropertyPersistentID
+            )
+            let query = MPMediaQuery()
+            query.addFilterPredicate(predicate)
+            if let song = query.items?.first {
+                audioPlayer.playPreview(song: song, startTime: startTime)
+            }
+        }
     }
     
     func saveChanges() {
@@ -195,7 +211,7 @@ struct EditButtonView: View {
         updatedButton.colorHex = selectedColor
         
         dataStore.updateButton(updatedButton)
-        audioPlayer.stop()
+        audioPlayer.stopPreview()
         dismiss()
     }
 }

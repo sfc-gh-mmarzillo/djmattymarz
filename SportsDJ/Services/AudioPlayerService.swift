@@ -9,6 +9,7 @@ class AudioPlayerService: ObservableObject {
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var nowPlayingTitle: String = ""
+    @Published var isPreviewing: Bool = false
     
     private var player: AVAudioPlayer?
     private var timer: Timer?
@@ -98,5 +99,41 @@ class AudioPlayerService: ObservableObject {
     func getSongDuration(persistentID: UInt64) -> Double? {
         guard let song = fetchSong(persistentID: persistentID) else { return nil }
         return song.playbackDuration
+    }
+    
+    // MARK: - Preview Playback (for configuring start time)
+    
+    func playPreview(song: MPMediaItem, startTime: Double) {
+        stop()
+        
+        guard let assetURL = song.assetURL else {
+            print("Could not find asset URL for preview")
+            return
+        }
+        
+        do {
+            player = try AVAudioPlayer(contentsOf: assetURL)
+            player?.prepareToPlay()
+            player?.currentTime = startTime
+            player?.play()
+            
+            isPreviewing = true
+            duration = player?.duration ?? 0
+            
+            startTimer()
+        } catch {
+            print("Error playing preview: \(error)")
+        }
+    }
+    
+    func stopPreview() {
+        player?.stop()
+        player = nil
+        isPreviewing = false
+        stopTimer()
+    }
+    
+    func seekPreview(to time: Double) {
+        player?.currentTime = time
     }
 }

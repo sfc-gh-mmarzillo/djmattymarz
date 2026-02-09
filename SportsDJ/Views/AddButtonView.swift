@@ -37,9 +37,14 @@ struct AddButtonView: View {
                 if let song = newSong {
                     songDuration = song.playbackDuration
                     if buttonName.isEmpty {
-                        buttonName = song.title ?? "Unknown"
+                        let title = song.title ?? "Unknown"
+                        let artist = song.artist ?? ""
+                        buttonName = artist.isEmpty ? title : "\(title) - \(artist)"
                     }
                 }
+            }
+            .onDisappear {
+                audioPlayer.stopPreview()
             }
         }
     }
@@ -79,7 +84,7 @@ struct AddButtonView: View {
     
     @ViewBuilder
     private var startPointSection: some View {
-        if selectedSong != nil {
+        if let song = selectedSong {
             Section("Start Point") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -91,8 +96,29 @@ struct AddButtonView: View {
                     .font(.caption)
                     
                     Slider(value: $startTime, in: 0...max(songDuration, 1))
+                        .onChange(of: startTime) { _ in
+                            if audioPlayer.isPreviewing {
+                                audioPlayer.seekPreview(to: startTime)
+                            }
+                        }
                     
-                    startPointButtons
+                    HStack {
+                        startPointButtons
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            if audioPlayer.isPreviewing {
+                                audioPlayer.stopPreview()
+                            } else {
+                                audioPlayer.playPreview(song: song, startTime: startTime)
+                            }
+                        }) {
+                            Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
+                                .font(.title)
+                                .foregroundColor(audioPlayer.isPreviewing ? .red : .blue)
+                        }
+                    }
                 }
             }
         }
