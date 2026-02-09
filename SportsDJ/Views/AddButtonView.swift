@@ -33,7 +33,7 @@ struct AddButtonView: View {
             .sheet(isPresented: $showingSongPicker) {
                 SongPickerView(selectedSong: $selectedSong, songDuration: $songDuration)
             }
-            .onChange(of: selectedSong) { _, newSong in
+            .onChange(of: selectedSong) { newSong in
                 if let song = newSong {
                     songDuration = song.playbackDuration
                     if buttonName.isEmpty {
