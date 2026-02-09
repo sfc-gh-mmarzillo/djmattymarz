@@ -23,7 +23,7 @@ struct SongPickerView: View {
         let sourceSongs: [MPMediaItem]
         
         if let playlist = selectedPlaylist {
-            sourceSongs = playlist.items ?? []
+            sourceSongs = playlist.items
         } else {
             sourceSongs = songs
         }
@@ -133,7 +133,7 @@ struct SongPickerView: View {
                                 Text(playlist.name ?? "Unknown Playlist")
                                     .font(.body)
                                     .foregroundColor(.primary)
-                                Text("\(playlist.items?.count ?? 0) songs")
+                                Text("\(playlist.items.count) songs")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
