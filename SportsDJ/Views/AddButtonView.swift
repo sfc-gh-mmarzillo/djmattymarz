@@ -29,17 +29,7 @@ struct AddButtonView: View {
             }
             .navigationTitle("Add Sound Button")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        saveButton()
-                    }
-                    .disabled(buttonName.isEmpty || selectedSong == nil)
-                }
-            }
+            .toolbar(content: toolbarContent)
             .sheet(isPresented: $showingSongPicker) {
                 SongPickerView(selectedSong: $selectedSong, songDuration: $songDuration)
             }
@@ -71,6 +61,19 @@ struct AddButtonView: View {
                 }
             }
             .foregroundColor(.primary)
+        }
+    }
+    
+    @ToolbarContentBuilder
+    private func toolbarContent() -> some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Add") {
+                saveButton()
+            }
+            .disabled(buttonName.isEmpty || selectedSong == nil)
         }
     }
     
