@@ -6,6 +6,8 @@ struct AddButtonView: View {
     @EnvironmentObject var audioPlayer: AudioPlayerService
     @Environment(\.dismiss) var dismiss
     
+    var preselectedCategory: String?
+    
     @State private var buttonName: String = ""
     @State private var selectedSong: MPMediaItem?
     @State private var startTime: Double = 0
@@ -40,6 +42,12 @@ struct AddButtonView: View {
                     let title = song.title ?? "Unknown"
                     let artist = song.artist ?? ""
                     buttonName = artist.isEmpty ? title : "\(title) - \(artist)"
+                }
+            }
+            .onAppear {
+                // Pre-select category if one was passed
+                if let category = preselectedCategory {
+                    selectedCategories.insert(category)
                 }
             }
             .onDisappear {
@@ -144,16 +152,23 @@ struct AddButtonView: View {
                         Spacer()
                         
                         Button(action: {
-                            if audioPlayer.isPreviewing {
+                            if audioPlayer.isPreviewing || audioPlayer.isLoading {
                                 audioPlayer.stopPreview()
                             } else {
                                 audioPlayer.playPreview(song: song, startTime: startTime)
                             }
                         }) {
-                            Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
-                                .font(.title)
-                                .foregroundColor(audioPlayer.isPreviewing ? .red : .blue)
+                            if audioPlayer.isLoading {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .frame(width: 28, height: 28)
+                            } else {
+                                Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
+                                    .font(.title)
+                                    .foregroundColor(audioPlayer.isPreviewing ? .red : .blue)
+                            }
                         }
+                        .disabled(audioPlayer.isLoading)
                     }
                 }
             }

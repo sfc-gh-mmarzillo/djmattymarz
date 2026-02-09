@@ -60,10 +60,17 @@ struct EditButtonView: View {
                             Spacer()
                             
                             Button(action: togglePreview) {
-                                Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
-                                    .font(.title)
-                                    .foregroundColor(audioPlayer.isPreviewing ? .red : .blue)
+                                if audioPlayer.isLoading {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .frame(width: 28, height: 28)
+                                } else {
+                                    Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
+                                        .font(.title)
+                                        .foregroundColor(audioPlayer.isPreviewing ? .red : .blue)
+                                }
                             }
+                            .disabled(audioPlayer.isLoading)
                             
                             Spacer()
                             Button("+1s") { startTime = min(songDuration, startTime + 1) }
@@ -188,7 +195,7 @@ struct EditButtonView: View {
     }
     
     func togglePreview() {
-        if audioPlayer.isPreviewing {
+        if audioPlayer.isPreviewing || audioPlayer.isLoading {
             audioPlayer.stopPreview()
         } else {
             let predicate = MPMediaPropertyPredicate(

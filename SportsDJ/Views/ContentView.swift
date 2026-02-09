@@ -58,7 +58,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingAddButton) {
-                AddButtonView()
+                AddButtonView(preselectedCategory: selectedFilter == "All" ? nil : selectedFilter)
             }
             .sheet(isPresented: $showingManageCategories) {
                 ManageCategoriesView()
@@ -113,14 +113,15 @@ struct ContentView: View {
                 ForEach(filteredButtons) { button in
                     SoundButtonView(
                         button: button,
-                        isPlaying: audioPlayer.currentButtonID == button.id,
+                        isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
+                        isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
                         isEditMode: isEditMode
                     )
                     .onTapGesture {
                         if isEditMode {
                             editingButton = button
                         } else {
-                            if audioPlayer.currentButtonID == button.id {
+                            if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
                                 audioPlayer.stop()
                             } else {
                                 audioPlayer.play(button: button)
@@ -138,7 +139,7 @@ struct ContentView: View {
     
     var nowPlayingBar: some View {
         Group {
-            if audioPlayer.isPlaying || !audioPlayer.nowPlayingTitle.isEmpty {
+            if audioPlayer.isPlaying || audioPlayer.isLoading || !audioPlayer.nowPlayingTitle.isEmpty {
                 VStack(spacing: 0) {
                     Divider()
                     HStack(spacing: 12) {
@@ -160,7 +161,7 @@ struct ContentView: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Now Playing")
+                            Text(audioPlayer.isLoading ? "Loading..." : "Now Playing")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             Text(audioPlayer.nowPlayingTitle)
@@ -171,10 +172,15 @@ struct ContentView: View {
                         
                         Spacer()
                         
-                        Text(formatTime(audioPlayer.currentTime))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.secondary)
+                        if audioPlayer.isLoading {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Text(formatTime(audioPlayer.currentTime))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.secondary)
+                        }
                         
                         Button(action: { audioPlayer.stop() }) {
                             Image(systemName: "stop.circle.fill")
@@ -224,6 +230,7 @@ struct FilterChip: View {
 struct SoundButtonView: View {
     let button: SoundButton
     let isPlaying: Bool
+    let isLoading: Bool
     let isEditMode: Bool
     
     @State private var artwork: UIImage?
@@ -231,7 +238,7 @@ struct SoundButtonView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(hex: button.colorHex).opacity(isPlaying ? 0.3 : 0.15))
+                .fill(Color(hex: button.colorHex).opacity(isPlaying ? 0.3 : (isLoading ? 0.1 : 0.15)))
             
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(hex: button.colorHex), lineWidth: isPlaying ? 3 : 1)
@@ -248,10 +255,12 @@ struct SoundButtonView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color(hex: button.colorHex).opacity(0.5), lineWidth: 1)
                         )
+                        .opacity(isLoading ? 0.5 : 1.0)
                 } else {
                     Image(systemName: isPlaying ? "speaker.wave.3.fill" : "music.note")
                         .font(.title3)
                         .foregroundColor(Color(hex: button.colorHex))
+                        .opacity(isLoading ? 0.5 : 1.0)
                 }
                 
                 Text(button.name)
@@ -259,12 +268,18 @@ struct SoundButtonView: View {
                     .fontWeight(.medium)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(.primary)
+                    .foregroundColor(isLoading ? .secondary : .primary)
             }
             .padding(6)
             
+            // Loading indicator overlay
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.7)
+            }
+            
             // Playing indicator overlay
-            if isPlaying {
+            if isPlaying && !isLoading {
                 VStack {
                     Spacer()
                     HStack {

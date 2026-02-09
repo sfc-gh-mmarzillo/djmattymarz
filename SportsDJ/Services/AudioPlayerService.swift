@@ -11,6 +11,7 @@ class AudioPlayerService: ObservableObject {
     @Published var nowPlayingTitle: String = ""
     @Published var isPreviewing: Bool = false
     @Published var currentArtwork: UIImage?
+    @Published var isLoading: Bool = false
     
     private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
     private var timer: Timer?
@@ -70,6 +71,12 @@ class AudioPlayerService: ObservableObject {
             return
         }
         
+        // Set loading state
+        isLoading = true
+        currentButtonID = button.id
+        nowPlayingTitle = button.name
+        currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
+        
         let collection = MPMediaItemCollection(items: [song])
         musicPlayer.setQueue(with: collection)
         
@@ -77,21 +84,23 @@ class AudioPlayerService: ObservableObject {
         hasSetStartTime = false
         
         musicPlayer.prepareToPlay { [weak self] error in
-            if let error = error {
-                print("Error preparing to play: \(error)")
-                return
-            }
-            
             DispatchQueue.main.async {
+                self?.isLoading = false
+                
+                if let error = error {
+                    print("Error preparing to play: \(error)")
+                    self?.currentButtonID = nil
+                    self?.nowPlayingTitle = ""
+                    self?.currentArtwork = nil
+                    return
+                }
+                
                 self?.musicPlayer.currentPlaybackTime = button.startTimeSeconds
                 self?.hasSetStartTime = true
                 self?.musicPlayer.play()
                 
                 self?.isPlaying = true
-                self?.currentButtonID = button.id
                 self?.duration = song.playbackDuration
-                self?.nowPlayingTitle = button.name
-                self?.currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
                 
                 self?.startTimer()
             }
@@ -101,6 +110,7 @@ class AudioPlayerService: ObservableObject {
     func stop() {
         musicPlayer.stop()
         isPlaying = false
+        isLoading = false
         currentButtonID = nil
         currentTime = 0
         nowPlayingTitle = ""
@@ -155,6 +165,8 @@ class AudioPlayerService: ObservableObject {
     func playPreview(song: MPMediaItem, startTime: Double) {
         stopPreview()
         
+        isLoading = true
+        
         let collection = MPMediaItemCollection(items: [song])
         musicPlayer.setQueue(with: collection)
         
@@ -162,12 +174,14 @@ class AudioPlayerService: ObservableObject {
         hasSetStartTime = false
         
         musicPlayer.prepareToPlay { [weak self] error in
-            if let error = error {
-                print("Error preparing preview: \(error)")
-                return
-            }
-            
             DispatchQueue.main.async {
+                self?.isLoading = false
+                
+                if let error = error {
+                    print("Error preparing preview: \(error)")
+                    return
+                }
+                
                 self?.musicPlayer.currentPlaybackTime = startTime
                 self?.hasSetStartTime = true
                 self?.musicPlayer.play()
@@ -183,6 +197,7 @@ class AudioPlayerService: ObservableObject {
     func stopPreview() {
         musicPlayer.stop()
         isPreviewing = false
+        isLoading = false
         targetStartTime = 0
         hasSetStartTime = false
         stopTimer()
