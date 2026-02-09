@@ -37,7 +37,8 @@ jobs:
             -authenticationKeyID ${{ secrets.API_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.ISSUER_ID }} \
             CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }}
+            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
+            CODE_SIGN_IDENTITY="Apple Distribution"
 
       - name: Export IPA
         run: |
