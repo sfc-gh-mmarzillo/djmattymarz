@@ -11,11 +11,14 @@ class AudioPlayerService: ObservableObject {
     @Published var nowPlayingTitle: String = ""
     @Published var isPreviewing: Bool = false
     
-    private var player: AVAudioPlayer?
+    private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
     private var timer: Timer?
+    private var targetStartTime: Double = 0
+    private var hasSetStartTime: Bool = false
     
     init() {
         setupAudioSession()
+        setupNotifications()
     }
     
     private func setupAudioSession() {
@@ -27,50 +30,89 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
+    private func setupNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playbackStateDidChange),
+            name: .MPMusicPlayerControllerPlaybackStateDidChange,
+            object: musicPlayer
+        )
+        musicPlayer.beginGeneratingPlaybackNotifications()
+    }
+    
+    @objc private func playbackStateDidChange() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            let state = self.musicPlayer.playbackState
+            self.isPlaying = (state == .playing)
+            
+            // Set start time after playback begins
+            if state == .playing && !self.hasSetStartTime && self.targetStartTime > 0 {
+                self.musicPlayer.currentPlaybackTime = self.targetStartTime
+                self.hasSetStartTime = true
+            }
+            
+            if state == .stopped || state == .paused {
+                if !self.isPreviewing {
+                    // Don't clear everything on pause
+                }
+            }
+        }
+    }
+    
     func play(button: SoundButton) {
         stop()
         
-        guard let song = fetchSong(persistentID: button.songPersistentID),
-              let assetURL = song.assetURL else {
-            print("Could not find song or asset URL")
+        guard let song = fetchSong(persistentID: button.songPersistentID) else {
+            print("Could not find song")
             return
         }
         
-        do {
-            player = try AVAudioPlayer(contentsOf: assetURL)
-            player?.prepareToPlay()
-            player?.currentTime = button.startTimeSeconds
-            player?.play()
+        let collection = MPMediaItemCollection(items: [song])
+        musicPlayer.setQueue(with: collection)
+        
+        targetStartTime = button.startTimeSeconds
+        hasSetStartTime = false
+        
+        musicPlayer.prepareToPlay { [weak self] error in
+            if let error = error {
+                print("Error preparing to play: \(error)")
+                return
+            }
             
-            isPlaying = true
-            currentButtonID = button.id
-            duration = player?.duration ?? 0
-            nowPlayingTitle = button.name
-            
-            startTimer()
-        } catch {
-            print("Error playing audio: \(error)")
+            DispatchQueue.main.async {
+                self?.musicPlayer.currentPlaybackTime = button.startTimeSeconds
+                self?.hasSetStartTime = true
+                self?.musicPlayer.play()
+                
+                self?.isPlaying = true
+                self?.currentButtonID = button.id
+                self?.duration = song.playbackDuration
+                self?.nowPlayingTitle = button.name
+                
+                self?.startTimer()
+            }
         }
     }
     
     func stop() {
-        player?.stop()
-        player = nil
+        musicPlayer.stop()
         isPlaying = false
         currentButtonID = nil
         currentTime = 0
         nowPlayingTitle = ""
+        targetStartTime = 0
+        hasSetStartTime = false
         stopTimer()
     }
     
     func togglePlayPause() {
-        guard let player = player else { return }
-        
-        if player.isPlaying {
-            player.pause()
+        if musicPlayer.playbackState == .playing {
+            musicPlayer.pause()
             isPlaying = false
         } else {
-            player.play()
+            musicPlayer.play()
             isPlaying = true
         }
     }
@@ -86,8 +128,12 @@ class AudioPlayerService: ObservableObject {
     }
     
     private func startTimer() {
+        stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.currentTime = self?.player?.currentTime ?? 0
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.currentTime = self.musicPlayer.currentPlaybackTime
+            }
         }
     }
     
@@ -104,36 +150,47 @@ class AudioPlayerService: ObservableObject {
     // MARK: - Preview Playback (for configuring start time)
     
     func playPreview(song: MPMediaItem, startTime: Double) {
-        stop()
+        stopPreview()
         
-        guard let assetURL = song.assetURL else {
-            print("Could not find asset URL for preview")
-            return
-        }
+        let collection = MPMediaItemCollection(items: [song])
+        musicPlayer.setQueue(with: collection)
         
-        do {
-            player = try AVAudioPlayer(contentsOf: assetURL)
-            player?.prepareToPlay()
-            player?.currentTime = startTime
-            player?.play()
+        targetStartTime = startTime
+        hasSetStartTime = false
+        
+        musicPlayer.prepareToPlay { [weak self] error in
+            if let error = error {
+                print("Error preparing preview: \(error)")
+                return
+            }
             
-            isPreviewing = true
-            duration = player?.duration ?? 0
-            
-            startTimer()
-        } catch {
-            print("Error playing preview: \(error)")
+            DispatchQueue.main.async {
+                self?.musicPlayer.currentPlaybackTime = startTime
+                self?.hasSetStartTime = true
+                self?.musicPlayer.play()
+                
+                self?.isPreviewing = true
+                self?.duration = song.playbackDuration
+                
+                self?.startTimer()
+            }
         }
     }
     
     func stopPreview() {
-        player?.stop()
-        player = nil
+        musicPlayer.stop()
         isPreviewing = false
+        targetStartTime = 0
+        hasSetStartTime = false
         stopTimer()
     }
     
     func seekPreview(to time: Double) {
-        player?.currentTime = time
+        musicPlayer.currentPlaybackTime = time
+    }
+    
+    deinit {
+        musicPlayer.endGeneratingPlaybackNotifications()
+        NotificationCenter.default.removeObserver(self)
     }
 }
