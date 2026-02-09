@@ -10,6 +10,7 @@ class AudioPlayerService: ObservableObject {
     @Published var duration: Double = 0
     @Published var nowPlayingTitle: String = ""
     @Published var isPreviewing: Bool = false
+    @Published var currentArtwork: UIImage?
     
     private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
     private var timer: Timer?
@@ -90,6 +91,7 @@ class AudioPlayerService: ObservableObject {
                 self?.currentButtonID = button.id
                 self?.duration = song.playbackDuration
                 self?.nowPlayingTitle = button.name
+                self?.currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
                 
                 self?.startTimer()
             }
@@ -102,6 +104,7 @@ class AudioPlayerService: ObservableObject {
         currentButtonID = nil
         currentTime = 0
         nowPlayingTitle = ""
+        currentArtwork = nil
         targetStartTime = 0
         hasSetStartTime = false
         stopTimer()

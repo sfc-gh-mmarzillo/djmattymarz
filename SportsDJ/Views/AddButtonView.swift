@@ -22,6 +22,7 @@ struct AddButtonView: View {
     var body: some View {
         NavigationView {
             Form {
+                songSelectionSection
                 buttonInfoSection
                 startPointSection
                 categoriesSection
@@ -36,11 +37,9 @@ struct AddButtonView: View {
             .onChange(of: selectedSong) { newSong in
                 if let song = newSong {
                     songDuration = song.playbackDuration
-                    if buttonName.isEmpty {
-                        let title = song.title ?? "Unknown"
-                        let artist = song.artist ?? ""
-                        buttonName = artist.isEmpty ? title : "\(title) - \(artist)"
-                    }
+                    let title = song.title ?? "Unknown"
+                    let artist = song.artist ?? ""
+                    buttonName = artist.isEmpty ? title : "\(title) - \(artist)"
                 }
             }
             .onDisappear {
@@ -49,23 +48,60 @@ struct AddButtonView: View {
         }
     }
     
-    private var buttonInfoSection: some View {
-        Section("Button Info") {
-            TextField("Button Name", text: $buttonName)
-            
+    private var songSelectionSection: some View {
+        Section("Select Song") {
             Button(action: { showingSongPicker = true }) {
-                HStack {
-                    Text("Song")
+                HStack(spacing: 12) {
+                    // Album artwork
+                    if let song = selectedSong,
+                       let artwork = song.artwork {
+                        Image(uiImage: artwork.image(at: CGSize(width: 60, height: 60)) ?? UIImage())
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 60)
+                            .cornerRadius(8)
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(.systemGray5))
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                Image(systemName: "music.note")
+                                    .font(.title2)
+                                    .foregroundColor(.secondary)
+                            )
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selectedSong?.title ?? "Tap to select a song")
+                            .font(.headline)
+                            .foregroundColor(selectedSong == nil ? .secondary : .primary)
+                            .lineLimit(1)
+                        
+                        if let artist = selectedSong?.artist {
+                            Text(artist)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    
                     Spacer()
-                    Text(selectedSong?.title ?? "Select...")
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                    
                     Image(systemName: "chevron.right")
                         .foregroundColor(.secondary)
                         .font(.caption)
                 }
             }
             .foregroundColor(.primary)
+        }
+    }
+    
+    @ViewBuilder
+    private var buttonInfoSection: some View {
+        if selectedSong != nil {
+            Section("Button Name") {
+                TextField("Button Name", text: $buttonName)
+            }
         }
     }
     
@@ -139,10 +175,13 @@ struct AddButtonView: View {
         .font(.caption)
     }
     
+    @ViewBuilder
     private var categoriesSection: some View {
-        Section("Categories") {
-            ForEach(dataStore.categories) { category in
-                categoryRow(category)
+        if selectedSong != nil {
+            Section("Categories") {
+                ForEach(dataStore.categories) { category in
+                    categoryRow(category)
+                }
             }
         }
     }
@@ -170,14 +209,17 @@ struct AddButtonView: View {
         }
     }
     
+    @ViewBuilder
     private var colorSection: some View {
-        Section("Button Color") {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                ForEach(colorOptions, id: \.self) { color in
-                    colorCircle(color)
+        if selectedSong != nil {
+            Section("Button Color") {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
+                    ForEach(colorOptions, id: \.self) { color in
+                        colorCircle(color)
+                    }
                 }
+                .padding(.vertical, 8)
             }
-            .padding(.vertical, 8)
         }
     }
     

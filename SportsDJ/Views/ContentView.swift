@@ -1,4 +1,5 @@
 import SwiftUI
+import MediaPlayer
 
 struct ContentView: View {
     @EnvironmentObject var audioPlayer: AudioPlayerService
@@ -35,7 +36,7 @@ struct ContentView: View {
                 
                 nowPlayingBar
             }
-            .navigationTitle("🎵 SportsDJ")
+            .navigationTitle("SportsDJ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -138,15 +139,33 @@ struct ContentView: View {
     var nowPlayingBar: some View {
         Group {
             if audioPlayer.isPlaying || !audioPlayer.nowPlayingTitle.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 0) {
                     Divider()
-                    HStack {
+                    HStack(spacing: 12) {
+                        // Album artwork
+                        if let artwork = audioPlayer.currentArtwork {
+                            Image(uiImage: artwork)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 50, height: 50)
+                                .cornerRadius(6)
+                        } else {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(.systemGray5))
+                                .frame(width: 50, height: 50)
+                                .overlay(
+                                    Image(systemName: "music.note")
+                                        .foregroundColor(.secondary)
+                                )
+                        }
+                        
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Now Playing")
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundColor(.secondary)
                             Text(audioPlayer.nowPlayingTitle)
-                                .font(.headline)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
                                 .lineLimit(1)
                         }
                         
@@ -155,16 +174,16 @@ struct ContentView: View {
                         Text(formatTime(audioPlayer.currentTime))
                             .font(.caption)
                             .monospacedDigit()
+                            .foregroundColor(.secondary)
                         
                         Button(action: { audioPlayer.stop() }) {
-                            Image(systemName: "stop.fill")
-                                .font(.title2)
+                            Image(systemName: "stop.circle.fill")
+                                .font(.title)
                                 .foregroundColor(.red)
                         }
-                        .padding(.leading, 8)
                     }
                     .padding(.horizontal)
-                    .padding(.bottom, 8)
+                    .padding(.vertical, 10)
                 }
                 .background(Color(.systemBackground))
             }
@@ -207,46 +226,93 @@ struct SoundButtonView: View {
     let isPlaying: Bool
     let isEditMode: Bool
     
+    @State private var artwork: UIImage?
+    
     var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(hex: button.colorHex).opacity(isPlaying ? 0.3 : 0.15))
-                
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(hex: button.colorHex), lineWidth: isPlaying ? 3 : 1)
-                
-                VStack(spacing: 4) {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(hex: button.colorHex).opacity(isPlaying ? 0.3 : 0.15))
+            
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: button.colorHex), lineWidth: isPlaying ? 3 : 1)
+            
+            VStack(spacing: 6) {
+                // Album artwork or icon
+                if let artwork = artwork {
+                    Image(uiImage: artwork)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 40, height: 40)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color(hex: button.colorHex).opacity(0.5), lineWidth: 1)
+                        )
+                } else {
                     Image(systemName: isPlaying ? "speaker.wave.3.fill" : "music.note")
-                        .font(.title2)
+                        .font(.title3)
                         .foregroundColor(Color(hex: button.colorHex))
-                    
-                    Text(button.name)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.primary)
                 }
-                .padding(8)
                 
-                if isEditMode {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "pencil.circle.fill")
-                                .foregroundColor(.blue)
-                                .background(Color.white.clipShape(Circle()))
-                        }
+                Text(button.name)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.primary)
+            }
+            .padding(6)
+            
+            // Playing indicator overlay
+            if isPlaying {
+                VStack {
+                    Spacer()
+                    HStack {
                         Spacer()
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .padding(4)
+                            .background(Color(hex: button.colorHex))
+                            .cornerRadius(4)
                     }
-                    .padding(4)
                 }
+                .padding(4)
+            }
+            
+            if isEditMode {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "pencil.circle.fill")
+                            .foregroundColor(.blue)
+                            .background(Color.white.clipShape(Circle()))
+                    }
+                    Spacer()
+                }
+                .padding(4)
             }
         }
         .frame(height: 100)
-        .scaleEffect(isPlaying ? 1.05 : 1.0)
+        .scaleEffect(isPlaying ? 1.02 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isPlaying)
+        .onAppear {
+            loadArtwork()
+        }
+    }
+    
+    private func loadArtwork() {
+        let predicate = MPMediaPropertyPredicate(
+            value: button.songPersistentID,
+            forProperty: MPMediaItemPropertyPersistentID
+        )
+        let query = MPMediaQuery()
+        query.addFilterPredicate(predicate)
+        
+        if let song = query.items?.first,
+           let songArtwork = song.artwork {
+            artwork = songArtwork.image(at: CGSize(width: 80, height: 80))
+        }
     }
 }
 
