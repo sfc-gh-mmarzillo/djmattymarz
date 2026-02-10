@@ -512,7 +512,7 @@ struct EditCompactCategoryChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: category.icon)
+                Image(systemName: category.iconName)
                     .font(.caption2)
                 Text(category.name)
                     .font(.caption.weight(.medium))
