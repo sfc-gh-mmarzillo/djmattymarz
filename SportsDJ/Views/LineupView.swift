@@ -1,4 +1,5 @@
 import SwiftUI
+import MediaPlayer
 
 struct LineupView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -356,6 +357,7 @@ struct PlayerCard: View {
 
 struct EditPlayerView: View {
     @EnvironmentObject var dataStore: DataStore
+    @EnvironmentObject var audioPlayer: AudioPlayerService
     @Environment(\.dismiss) var dismiss
     
     let player: Player
@@ -363,6 +365,13 @@ struct EditPlayerView: View {
     @State private var name: String = ""
     @State private var number: String = ""
     @State private var position: String = ""
+    
+    // Walk-up song
+    @State private var selectedSong: MPMediaItem?
+    @State private var showingSongPicker = false
+    @State private var songDuration: Double = 0
+    @State private var startTime: Double = 0
+    @State private var hasSong: Bool = false
     
     var body: some View {
         NavigationView {
@@ -431,6 +440,9 @@ struct EditPlayerView: View {
                         .padding()
                         .background(Color.white.opacity(0.05))
                         .cornerRadius(16)
+                        
+                        // Walk-up Song section
+                        walkUpSongCard
                     }
                     .padding()
                 }
@@ -449,16 +461,156 @@ struct EditPlayerView: View {
                         .disabled(!canSave)
                 }
             }
+            .sheet(isPresented: $showingSongPicker) {
+                SongPickerView(selectedSong: $selectedSong, songDuration: $songDuration)
+            }
+            .onChange(of: selectedSong) { newSong in
+                if let song = newSong {
+                    songDuration = song.playbackDuration
+                    hasSong = true
+                }
+            }
             .onAppear {
-                name = player.name
-                number = String(player.number)
-                position = player.position ?? ""
+                loadPlayerData()
             }
         }
     }
     
+    // MARK: - Walk-up Song Card
+    
+    private var walkUpSongCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Walk-up Song (Optional)", systemImage: "music.note")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            if let song = selectedSong {
+                // Show selected song
+                HStack(spacing: 12) {
+                    // Album artwork
+                    if let artwork = song.artwork?.image(at: CGSize(width: 50, height: 50)) {
+                        Image(uiImage: artwork)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(8)
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hex: "#6366f1").opacity(0.3))
+                            .frame(width: 50, height: 50)
+                            .overlay(
+                                Image(systemName: "music.note")
+                                    .foregroundColor(Color(hex: "#6366f1"))
+                            )
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(song.title ?? "Unknown")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(song.artist ?? "Unknown Artist")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                    
+                    // Remove song button
+                    Button(action: {
+                        selectedSong = nil
+                        hasSong = false
+                        startTime = 0
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.gray)
+                    }
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(10)
+                
+                // Start time slider
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Start at")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Text(formatTime(startTime))
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(Color(hex: "#6366f1"))
+                    }
+                    
+                    Slider(value: $startTime, in: 0...max(songDuration - 10, 0))
+                        .accentColor(Color(hex: "#6366f1"))
+                }
+                .padding(.top, 8)
+                
+            } else {
+                // No song selected - show add button
+                Button(action: { showingSongPicker = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                        Text("Add Walk-up Song")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundColor(Color(hex: "#6366f1"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color(hex: "#6366f1").opacity(0.1))
+                    .cornerRadius(10)
+                }
+            }
+            
+            Text("Song plays after the announcement")
+                .font(.caption)
+                .foregroundColor(.gray)
+        }
+        .padding()
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(16)
+    }
+    
+    // MARK: - Helpers
+    
     private var canSave: Bool {
         !name.isEmpty && !number.isEmpty && Int(number) != nil
+    }
+    
+    private func formatTime(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+    
+    private func loadPlayerData() {
+        name = player.name
+        number = String(player.number)
+        position = player.position ?? ""
+        
+        // Load existing song if player has one
+        if let soundID = player.announcementSoundID,
+           let sound = dataStore.buttons.first(where: { $0.id == soundID }) {
+            
+            if sound.songPersistentID != 0 {
+                // Has a song - try to load it
+                let query = MPMediaQuery.songs()
+                query.addFilterPredicate(MPMediaPropertyPredicate(
+                    value: sound.songPersistentID,
+                    forProperty: MPMediaItemPropertyPersistentID
+                ))
+                if let song = query.items?.first {
+                    selectedSong = song
+                    songDuration = song.playbackDuration
+                    startTime = sound.startTimeSeconds
+                    hasSong = true
+                }
+            }
+        }
     }
     
     private func savePlayer() {
@@ -468,6 +620,28 @@ struct EditPlayerView: View {
         updatedPlayer.name = name
         updatedPlayer.number = playerNumber
         updatedPlayer.position = position.isEmpty ? nil : position
+        
+        // Update the associated sound button
+        if let soundID = player.announcementSoundID,
+           var sound = dataStore.buttons.first(where: { $0.id == soundID }) {
+            
+            // Update announcement text
+            sound.name = "📢 \(name)"
+            sound.voiceOver?.text = updatedPlayer.announcementText
+            
+            // Update song if selected
+            if let song = selectedSong {
+                sound.songPersistentID = song.persistentID
+                sound.startTimeSeconds = startTime
+                sound.isVoiceOnly = false
+            } else {
+                sound.songPersistentID = 0
+                sound.startTimeSeconds = 0
+                sound.isVoiceOnly = true
+            }
+            
+            dataStore.updateButton(sound)
+        }
         
         dataStore.updatePlayer(updatedPlayer)
         dismiss()
