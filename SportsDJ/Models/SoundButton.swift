@@ -8,7 +8,7 @@ enum MusicSource: String, Codable {
 }
 
 // MARK: - Voice Over Settings
-struct VoiceOverSettings: Codable, Equatable {
+struct VoiceOverSettings: Codable, Equatable, Hashable {
     var enabled: Bool = false
     var text: String = ""
     var voiceIdentifier: String? = nil // nil = default system voice
