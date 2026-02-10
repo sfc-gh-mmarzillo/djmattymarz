@@ -28,10 +28,40 @@ class AudioPlayerService: ObservableObject {
     private var originalVolume: Float = 1.0
     private var fadeStartVolume: Float = 1.0
     
+    // Volume control - must be retained and added to view hierarchy
+    private var volumeView: MPVolumeView?
+    private var volumeSlider: UISlider?
+    
     init() {
         setupAudioSession()
         setupNotifications()
         setupSpotifyObservers()
+        setupVolumeControl()
+    }
+    
+    private func setupVolumeControl() {
+        // Create an MPVolumeView and find its slider
+        // This needs to be attached to the view hierarchy to work
+        DispatchQueue.main.async { [weak self] in
+            let volumeView = MPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 0, height: 0))
+            volumeView.isHidden = true
+            
+            // Add to key window
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first {
+                window.addSubview(volumeView)
+            }
+            
+            // Find the volume slider
+            for subview in volumeView.subviews {
+                if let slider = subview as? UISlider {
+                    self?.volumeSlider = slider
+                    break
+                }
+            }
+            
+            self?.volumeView = volumeView
+        }
     }
     
     private func setupAudioSession() {
@@ -295,18 +325,18 @@ class AudioPlayerService: ObservableObject {
     }
     
     private func setSystemVolume(_ volume: Float) {
-        // Use MPVolumeView to set system volume
-        let volumeView = MPVolumeView()
-        if let slider = volumeView.subviews.first(where: { $0 is UISlider }) as? UISlider {
-            DispatchQueue.main.async {
-                slider.value = volume
-            }
+        // Use the retained volume slider
+        DispatchQueue.main.async { [weak self] in
+            self?.volumeSlider?.value = volume
         }
     }
     
     private func restoreVolume() {
-        if originalVolume > 0 {
-            setSystemVolume(originalVolume)
+        // Small delay to ensure music has stopped before restoring volume
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self, self.originalVolume > 0 else { return }
+            self.setSystemVolume(self.originalVolume)
+            print("Volume restored to: \(self.originalVolume)")
         }
     }
     
