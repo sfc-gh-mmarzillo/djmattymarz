@@ -412,6 +412,7 @@ struct EventCard: View {
     
     @State private var showingDeleteAlert = false
     @State private var showingLastEventAlert = false
+    @State private var showingVoiceSettings = false
     
     var buttonCount: Int {
         dataStore.buttons.filter { $0.eventID == event.id }.count
@@ -423,6 +424,10 @@ struct EventCard: View {
     
     var isLastEvent: Bool {
         dataStore.events.count <= 1
+    }
+    
+    var hasVoiceSettings: Bool {
+        event.defaultVoiceSettings != nil
     }
     
     var body: some View {
@@ -488,6 +493,14 @@ struct EventCard: View {
                     .disabled(index == totalCount - 1)
                 }
             } else {
+                // Voice settings button
+                Button(action: { showingVoiceSettings = true }) {
+                    Image(systemName: hasVoiceSettings ? "mic.fill" : "mic")
+                        .font(.body)
+                        .foregroundColor(hasVoiceSettings ? Color(hex: "#22c55e") : .gray)
+                }
+                .padding(.trailing, 4)
+                
                 // Selected indicator
                 if dataStore.selectedEventID == event.id {
                     Image(systemName: "checkmark.circle.fill")
@@ -527,6 +540,9 @@ struct EventCard: View {
                 // Always select the tapped event (no deselection)
                 dataStore.selectEvent(event)
             }
+        }
+        .sheet(isPresented: $showingVoiceSettings) {
+            TeamVoiceSettingsView(event: event)
         }
         .alert("Delete Event?", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
@@ -1217,6 +1233,294 @@ struct DefaultSettingsView: View {
             startFromBeginning: true
         )
         dataStore.updateDefaultSettings(settings)
+    }
+}
+
+// MARK: - Team Voice Settings View
+
+struct TeamVoiceSettingsView: View {
+    @EnvironmentObject var dataStore: DataStore
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject private var speechService = SpeechService.shared
+    
+    let event: TeamEvent
+    
+    @State private var voiceRate: Float = 0.5
+    @State private var voicePitch: Float = 1.0
+    @State private var voiceVolume: Float = 1.0
+    @State private var selectedVoiceID: String? = nil
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(hex: "#1a1a2e"),
+                        Color(hex: "#16213e"),
+                        Color(hex: "#0f0f23")
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Header info
+                        VStack(spacing: 8) {
+                            Image(systemName: "mic.fill")
+                                .font(.largeTitle)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color(hex: "#22c55e"), Color(hex: "#14b8a6")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            
+                            Text("Announcer Voice")
+                                .font(.title2.weight(.bold))
+                                .foregroundColor(.white)
+                            
+                            Text("Set the default voice for all player announcements in \(event.name)")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 20)
+                        
+                        // Voice selection
+                        voiceSelectionCard
+                        
+                        // Voice settings sliders
+                        voiceSettingsCard
+                        
+                        // Preview button
+                        previewButton
+                        
+                        // Info text
+                        Text("New players added to this team will inherit these voice settings. You can customize individual players in their edit view.")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Voice Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        speechService.stop()
+                        dismiss()
+                    }
+                    .foregroundColor(.gray)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveVoiceSettings()
+                    }
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(Color(hex: "#6366f1"))
+                }
+            }
+            .onAppear {
+                loadCurrentSettings()
+            }
+        }
+    }
+    
+    // MARK: - Voice Selection Card
+    
+    private var voiceSelectionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Voice", systemImage: "person.wave.2.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Default (best announcer) option
+                    Button(action: { selectedVoiceID = nil }) {
+                        VStack(spacing: 4) {
+                            Text("Announcer")
+                                .font(.caption.weight(.medium))
+                            Text("(Default)")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(selectedVoiceID == nil ? .white : .gray)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            selectedVoiceID == nil ?
+                            Color(hex: "#22c55e") :
+                            Color.white.opacity(0.1)
+                        )
+                        .cornerRadius(8)
+                    }
+                    
+                    ForEach(speechService.availableVoices.prefix(10), id: \.identifier) { voice in
+                        Button(action: { selectedVoiceID = voice.identifier }) {
+                            Text(voice.name.replacingOccurrences(of: " (Enhanced)", with: ""))
+                                .font(.caption.weight(.medium))
+                                .foregroundColor(selectedVoiceID == voice.identifier ? .white : .gray)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    selectedVoiceID == voice.identifier ?
+                                    Color(hex: "#6366f1") :
+                                    Color.white.opacity(0.1)
+                                )
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(16)
+    }
+    
+    // MARK: - Voice Settings Card
+    
+    private var voiceSettingsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Voice Settings", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            // Speed slider
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Speed")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text(String(format: "%.0f%%", voiceRate * 100))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white)
+                }
+                Slider(value: $voiceRate, in: 0...1)
+                    .tint(Color(hex: "#6366f1"))
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(10)
+            
+            // Pitch slider
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Pitch")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text(String(format: "%.1f", voicePitch))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white)
+                }
+                Slider(value: $voicePitch, in: 0.5...2.0)
+                    .tint(Color(hex: "#8b5cf6"))
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(10)
+            
+            // Volume slider
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Volume")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Text(String(format: "%.0f%%", voiceVolume * 100))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white)
+                }
+                Slider(value: $voiceVolume, in: 0...1)
+                    .tint(Color(hex: "#ec4899"))
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(10)
+        }
+        .padding()
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(16)
+    }
+    
+    // MARK: - Preview Button
+    
+    private var previewButton: some View {
+        Button(action: previewVoice) {
+            HStack {
+                Spacer()
+                Image(systemName: speechService.isSpeaking ? "stop.fill" : "play.fill")
+                Text(speechService.isSpeaking ? "Stop" : "Preview Voice")
+                    .font(.headline)
+                Spacer()
+            }
+            .foregroundColor(.white)
+            .padding(.vertical, 16)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#22c55e"), Color(hex: "#14b8a6")],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(12)
+        }
+    }
+    
+    // MARK: - Actions
+    
+    private func loadCurrentSettings() {
+        if let settings = event.defaultVoiceSettings {
+            voiceRate = settings.rate
+            voicePitch = settings.pitch
+            voiceVolume = settings.volume
+            selectedVoiceID = settings.voiceIdentifier
+        }
+    }
+    
+    private func previewVoice() {
+        if speechService.isSpeaking {
+            speechService.stop()
+        } else {
+            let settings = VoiceOverSettings(
+                enabled: true,
+                text: "Now batting, number 7, Center Field, Mickey Mantle",
+                voiceIdentifier: selectedVoiceID,
+                rate: voiceRate,
+                pitch: voicePitch,
+                volume: voiceVolume,
+                preDelay: 0,
+                postDelay: 0
+            )
+            speechService.previewVoice(text: settings.text, settings: settings)
+        }
+    }
+    
+    private func saveVoiceSettings() {
+        speechService.stop()
+        
+        var updatedEvent = event
+        updatedEvent.defaultVoiceSettings = VoiceOverSettings(
+            enabled: true,
+            text: "", // Text will be set per-player
+            voiceIdentifier: selectedVoiceID,
+            rate: voiceRate,
+            pitch: voicePitch,
+            volume: voiceVolume,
+            preDelay: 0,
+            postDelay: 0.5
+        )
+        
+        dataStore.updateEvent(updatedEvent)
+        dismiss()
     }
 }
 

@@ -330,12 +330,37 @@ struct LineupOCRView: View {
     private func parseRoster(from lines: [String]) {
         var players: [RecognizedPlayer] = []
         
+        // Position abbreviation expansions (same as Player model)
+        let positionExpansions: [String: String] = [
+            "P": "Pitcher",
+            "C": "Catcher",
+            "1B": "First Base",
+            "2B": "Second Base",
+            "3B": "Third Base",
+            "SS": "Shortstop",
+            "LF": "Left Field",
+            "CF": "Center Field",
+            "RF": "Right Field",
+            "DH": "Designated Hitter",
+            "OF": "Outfield",
+            "IF": "Infield",
+            "UT": "Utility",
+            "PH": "Pinch Hitter",
+            "PR": "Pinch Runner",
+            "DP": "Designated Player",
+            "FLEX": "Flex"
+        ]
+        
         // Common patterns for roster formats:
         // "12 John Smith" or "#12 John Smith" or "John Smith 12" or "John Smith #12"
-        // "12 John Smith P" or "12 John Smith Pitcher"
+        // "12 John Smith P" or "12 John Smith Pitcher" or "12 John Smith (P)"
         
         let numberPattern = #"#?(\d{1,3})"#
         let numberRegex = try? NSRegularExpression(pattern: numberPattern, options: [])
+        
+        // Pattern for parenthesized position like "(P)", "(SS)", "(1B)"
+        let parenPositionPattern = #"\(([A-Za-z0-9]+)\)\s*$"#
+        let parenPositionRegex = try? NSRegularExpression(pattern: parenPositionPattern, options: [])
         
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -363,19 +388,32 @@ struct LineupOCRView: View {
             // Skip if name is too short or looks like a position only
             guard nameString.count >= 2 else { continue }
             
-            // Try to extract position (common abbreviations at end)
-            let positionPatterns = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "OF", "IF", 
-                                    "Pitcher", "Catcher", "First Base", "Second Base", "Third Base", 
-                                    "Shortstop", "Left Field", "Center Field", "Right Field"]
-            
             var position: String? = nil
             var name = nameString
             
-            for posPattern in positionPatterns {
-                if nameString.hasSuffix(" \(posPattern)") || nameString.hasSuffix(" \(posPattern.lowercased())") {
-                    position = posPattern
-                    name = String(nameString.dropLast(posPattern.count + 1))
-                    break
+            // First, try to extract parenthesized position like "(P)" or "(SS)"
+            if let parenRegex = parenPositionRegex,
+               let parenMatch = parenRegex.firstMatch(in: nameString, options: [], range: NSRange(nameString.startIndex..., in: nameString)),
+               let posRange = Range(parenMatch.range(at: 1), in: nameString),
+               let fullRange = Range(parenMatch.range, in: nameString) {
+                let posAbbrev = String(nameString[posRange]).uppercased()
+                // Expand the abbreviation to full position name
+                position = positionExpansions[posAbbrev] ?? posAbbrev
+                name = nameString.replacingCharacters(in: fullRange, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                // Try to extract position at end (common abbreviations)
+                let positionPatterns = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "OF", "IF", 
+                                        "Pitcher", "Catcher", "First Base", "Second Base", "Third Base", 
+                                        "Shortstop", "Left Field", "Center Field", "Right Field"]
+                
+                for posPattern in positionPatterns {
+                    if nameString.hasSuffix(" \(posPattern)") || nameString.hasSuffix(" \(posPattern.lowercased())") {
+                        // If it's an abbreviation, expand it
+                        let upperPattern = posPattern.uppercased()
+                        position = positionExpansions[upperPattern] ?? posPattern
+                        name = String(nameString.dropLast(posPattern.count + 1))
+                        break
+                    }
                 }
             }
             

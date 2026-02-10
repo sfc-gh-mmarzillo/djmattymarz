@@ -258,16 +258,32 @@ class DataStore: ObservableObject {
     
     // Create announcement sound for a player
     func createAnnouncementSound(for player: Player, voiceSettings: VoiceOverSettings? = nil) -> SoundButton {
-        let settings = voiceSettings ?? VoiceOverSettings(
-            enabled: true,
-            text: player.announcementText,
-            voiceIdentifier: nil,
-            rate: 0.5,
-            pitch: 1.0,
-            volume: 1.0,
-            preDelay: 0,
-            postDelay: 0
-        )
+        // Get team's default voice settings if no custom settings provided
+        let teamVoiceSettings = teamEvents.first(where: { $0.id == player.teamEventID })?.defaultVoiceSettings
+        
+        let settings: VoiceOverSettings
+        if let customSettings = voiceSettings {
+            // Use custom settings provided
+            settings = customSettings
+        } else if let teamSettings = teamVoiceSettings {
+            // Inherit from team settings, but set the text for this player
+            var inherited = teamSettings
+            inherited.text = player.announcementText
+            inherited.enabled = true
+            settings = inherited
+        } else {
+            // Default settings (uses SpeechService's defaultAnnouncerVoice)
+            settings = VoiceOverSettings(
+                enabled: true,
+                text: player.announcementText,
+                voiceIdentifier: nil, // nil = use SpeechService's best announcer voice
+                rate: 0.5,
+                pitch: 1.0,
+                volume: 1.0,
+                preDelay: 0,
+                postDelay: 0.5
+            )
+        }
         
         // Ensure text is set correctly
         var finalSettings = settings

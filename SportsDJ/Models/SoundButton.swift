@@ -61,13 +61,15 @@ struct TeamEvent: Identifiable, Codable, Hashable {
     var colorHex: String
     var iconName: String
     var order: Int
+    var defaultVoiceSettings: VoiceOverSettings? // Team-level voice settings that players inherit
     
-    init(name: String, date: Date? = nil, colorHex: String = "#007AFF", iconName: String = "star.fill", order: Int = 0) {
+    init(name: String, date: Date? = nil, colorHex: String = "#007AFF", iconName: String = "star.fill", order: Int = 0, defaultVoiceSettings: VoiceOverSettings? = nil) {
         self.name = name
         self.date = date
         self.colorHex = colorHex
         self.iconName = iconName
         self.order = order
+        self.defaultVoiceSettings = defaultVoiceSettings
     }
 }
 

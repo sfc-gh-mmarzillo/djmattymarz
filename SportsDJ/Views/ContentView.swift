@@ -55,13 +55,7 @@ struct ContentView: View {
                     eventSelector
                     filterBar
                     
-                    if dataStore.buttons.isEmpty {
-                        emptyState
-                    } else if filteredButtons.isEmpty {
-                        noMatchingButtonsState
-                    } else {
-                        buttonGrid
-                    }
+                    mainContentArea
                     
                     Spacer(minLength: 0)
                     nowPlayingBar
@@ -210,38 +204,89 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Empty States
+    // MARK: - Main Content Area (always shows batting order)
     
-    var emptyState: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            
-            // DJ Kids branding (subtle)
-            if let _ = UIImage(named: "djkids") {
-                Image("djkids")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 80, height: 80)
-                    .opacity(0.6)
+    var mainContentArea: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Sound buttons section
+                if dataStore.buttons.isEmpty {
+                    soundsEmptyState
+                } else if filteredButtons.isEmpty {
+                    noMatchingSoundsState
+                } else {
+                    soundButtonsGrid
+                }
+                
+                // Batting Order Section - always visible
+                battingOrderSection
+            }
+            .padding(.top, 16)
+        }
+    }
+    
+    // MARK: - Sound Buttons Grid
+    
+    var soundButtonsGrid: some View {
+        let buttons = filteredButtons
+        let columnCount = 3
+        return LazyVGrid(columns: columns, spacing: 14) {
+            ForEach(Array(buttons.enumerated()), id: \.element.id) { index, button in
+                ModernSoundButtonView(
+                    button: button,
+                    isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
+                    isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
+                    isEditMode: isEditMode,
+                    isFirst: index == 0,
+                    isLast: index == buttons.count - 1,
+                    canMoveUp: index >= columnCount,
+                    canMoveDown: index < buttons.count - columnCount,
+                    onMoveLeft: { moveSoundButtonLeft(at: index) },
+                    onMoveRight: { moveSoundButtonRight(at: index) },
+                    onMoveUp: { moveSoundButtonUp(at: index) },
+                    onMoveDown: { moveSoundButtonDown(at: index) }
+                )
+                .onTapGesture {
+                    if isEditMode {
+                        editingButton = button
+                    } else {
+                        if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
+                            audioPlayer.stop()
+                        } else {
+                            audioPlayer.play(button: button)
+                        }
+                    }
+                }
             }
             
+            // Add Sound Button in grid
+            AddSoundGridButton {
+                showingAddButton = true
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    // MARK: - Sounds Empty State (compact version)
+    
+    var soundsEmptyState: some View {
+        VStack(spacing: 16) {
             ZStack {
                 Circle()
                     .fill(Color(hex: "#6366f1").opacity(0.1))
-                    .frame(width: 120, height: 120)
+                    .frame(width: 80, height: 80)
                 
                 Image(systemName: "music.note.list")
-                    .font(.system(size: 50))
+                    .font(.system(size: 35))
                     .foregroundColor(Color(hex: "#6366f1"))
             }
             
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("No Sound Buttons Yet")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(.headline)
                     .foregroundColor(.white)
                 
-                Text("Tap + to add your first sound button")
+                Text("Tap + to add your first sound")
                     .font(.subheadline)
                     .foregroundColor(.gray)
             }
@@ -251,10 +296,10 @@ struct ContentView: View {
                     Image(systemName: "plus.circle.fill")
                     Text("Add Sound")
                 }
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 14)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
                 .background(
                     LinearGradient(
                         colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
@@ -262,96 +307,40 @@ struct ContentView: View {
                         endPoint: .trailing
                     )
                 )
-                .cornerRadius(25)
-            }
-            
-            Spacer()
-            
-            // Subtle branding at bottom
-            djKidsBranding
-        }
-    }
-    
-    // MARK: - DJ Kids Branding
-    
-    var djKidsBranding: some View {
-        Group {
-            if let _ = UIImage(named: "djkids") {
-                HStack(spacing: 6) {
-                    Image("djkids")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 20, height: 20)
-                    Text("Powered by DJ Kids")
-                        .font(.caption2)
-                }
-                .foregroundColor(.gray.opacity(0.5))
-                .padding(.bottom, 8)
+                .cornerRadius(20)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .padding(.horizontal, 16)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
     }
     
-    var noMatchingButtonsState: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
+    var noMatchingSoundsState: some View {
+        VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 40))
+                .font(.system(size: 30))
                 .foregroundColor(.gray)
             
             Text("No sounds in this category")
-                .font(.headline)
+                .font(.subheadline)
                 .foregroundColor(.white)
             
             Text("Try selecting a different filter")
-                .font(.subheadline)
+                .font(.caption)
                 .foregroundColor(.gray)
-            
-            Spacer()
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .padding(.horizontal, 16)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
     }
-    
-    // MARK: - Button Grid
-    
-    var buttonGrid: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Sound buttons grid
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(filteredButtons) { button in
-                        ModernSoundButtonView(
-                            button: button,
-                            isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
-                            isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
-                            isEditMode: isEditMode
-                        )
-                        .onTapGesture {
-                            if isEditMode {
-                                editingButton = button
-                            } else {
-                                if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
-                                    audioPlayer.stop()
-                                } else {
-                                    audioPlayer.play(button: button)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Add Sound Button in grid
-                    AddSoundGridButton {
-                        showingAddButton = true
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                
-                // Batting Order Section
-                battingOrderSection
-            }
-        }
-    }
-    
+
+
     // MARK: - Batting Order Section
     
     var battingOrderSection: some View {
@@ -421,18 +410,22 @@ struct ContentView: View {
                 .padding(.vertical, 24)
             } else {
                 // Players list with batting order numbers
+                let players = dataStore.filteredPlayers
                 VStack(spacing: 8) {
-                    ForEach(Array(dataStore.filteredPlayers.enumerated()), id: \.element.id) { index, player in
+                    ForEach(Array(players.enumerated()), id: \.element.id) { index, player in
                         BattingOrderRow(
                             player: player,
                             battingOrder: index + 1,
                             isPlaying: isPlayerPlaying(player),
                             isEditMode: isEditMode,
+                            isFirst: index == 0,
+                            isLast: index == players.count - 1,
                             onPlay: { playPlayer(player) },
-                            onEdit: { editingPlayer = player }
+                            onEdit: { editingPlayer = player },
+                            onMoveUp: { movePlayerUp(at: index) },
+                            onMoveDown: { movePlayerDown(at: index) }
                         )
                     }
-                    .onMove(perform: movePlayer)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -469,8 +462,41 @@ struct ContentView: View {
         }
     }
     
-    private func movePlayer(from source: IndexSet, to destination: Int) {
-        dataStore.movePlayer(from: source, to: destination)
+    private func movePlayerUp(at index: Int) {
+        guard index > 0 else { return }
+        dataStore.movePlayer(from: IndexSet(integer: index), to: index - 1)
+    }
+    
+    private func movePlayerDown(at index: Int) {
+        let players = dataStore.filteredPlayers
+        guard index < players.count - 1 else { return }
+        dataStore.movePlayer(from: IndexSet(integer: index), to: index + 2)
+    }
+    
+    private func moveSoundButtonLeft(at index: Int) {
+        guard index > 0 else { return }
+        dataStore.moveButton(from: IndexSet(integer: index), to: index - 1)
+    }
+    
+    private func moveSoundButtonRight(at index: Int) {
+        let buttons = filteredButtons
+        guard index < buttons.count - 1 else { return }
+        dataStore.moveButton(from: IndexSet(integer: index), to: index + 2)
+    }
+    
+    private func moveSoundButtonUp(at index: Int) {
+        let columnCount = 3
+        guard index >= columnCount else { return }
+        // Move up by column count (one full row)
+        dataStore.moveButton(from: IndexSet(integer: index), to: index - columnCount)
+    }
+    
+    private func moveSoundButtonDown(at index: Int) {
+        let buttons = filteredButtons
+        let columnCount = 3
+        guard index < buttons.count - columnCount else { return }
+        // Move down by column count (one full row)
+        dataStore.moveButton(from: IndexSet(integer: index), to: index + columnCount + 1)
     }
     
     // MARK: - Now Playing Bar
@@ -646,6 +672,14 @@ struct ModernSoundButtonView: View {
     let isPlaying: Bool
     let isLoading: Bool
     let isEditMode: Bool
+    let isFirst: Bool
+    let isLast: Bool
+    let canMoveUp: Bool    // Can move up a row
+    let canMoveDown: Bool  // Can move down a row
+    let onMoveLeft: () -> Void
+    let onMoveRight: () -> Void
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
     
     @State private var artwork: UIImage?
     
@@ -739,23 +773,60 @@ struct ModernSoundButtonView: View {
                 .padding(6)
             }
             
-            // Edit mode indicator
+            // Edit mode indicator with move buttons
             if isEditMode {
-                VStack {
+                VStack(spacing: 0) {
                     HStack {
                         Spacer()
                         Image(systemName: "pencil.circle.fill")
-                            .font(.title3)
+                            .font(.caption)
                             .foregroundColor(.white)
                             .background(
                                 Circle()
                                     .fill(Color(hex: "#6366f1"))
-                                    .frame(width: 24, height: 24)
+                                    .frame(width: 18, height: 18)
                             )
                     }
+                    
                     Spacer()
+                    
+                    // D-pad style move buttons
+                    VStack(spacing: 2) {
+                        // Up button
+                        Button(action: onMoveUp) {
+                            Image(systemName: "chevron.up.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(canMoveUp ? Color(hex: "#22c55e") : .gray.opacity(0.3))
+                        }
+                        .disabled(!canMoveUp)
+                        
+                        // Left and Right buttons
+                        HStack(spacing: 12) {
+                            Button(action: onMoveLeft) {
+                                Image(systemName: "chevron.left.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(isFirst ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
+                            }
+                            .disabled(isFirst)
+                            
+                            Button(action: onMoveRight) {
+                                Image(systemName: "chevron.right.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(isLast ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
+                            }
+                            .disabled(isLast)
+                        }
+                        
+                        // Down button
+                        Button(action: onMoveDown) {
+                            Image(systemName: "chevron.down.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(canMoveDown ? Color(hex: "#22c55e") : .gray.opacity(0.3))
+                        }
+                        .disabled(!canMoveDown)
+                    }
                 }
-                .padding(6)
+                .padding(4)
             }
         }
         .frame(height: 110)
@@ -831,11 +902,33 @@ struct BattingOrderRow: View {
     let battingOrder: Int
     let isPlaying: Bool
     let isEditMode: Bool
+    let isFirst: Bool
+    let isLast: Bool
     let onPlay: () -> Void
     let onEdit: () -> Void
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
     
     var body: some View {
         HStack(spacing: 12) {
+            // Move up/down buttons
+            VStack(spacing: 2) {
+                Button(action: onMoveUp) {
+                    Image(systemName: "chevron.up")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(isFirst ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
+                }
+                .disabled(isFirst)
+                
+                Button(action: onMoveDown) {
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(isLast ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
+                }
+                .disabled(isLast)
+            }
+            .frame(width: 24)
+            
             // Batting order number
             ZStack {
                 Circle()
@@ -901,11 +994,6 @@ struct BattingOrderRow: View {
                         .foregroundColor(Color(hex: "#6366f1"))
                 }
             }
-            
-            // Drag handle (always visible for reordering)
-            Image(systemName: "line.3.horizontal")
-                .font(.caption)
-                .foregroundColor(.gray.opacity(0.5))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
