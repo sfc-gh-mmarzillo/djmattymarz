@@ -53,8 +53,8 @@ struct LineupOCRView: View {
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(image: $selectedImage)
             }
-            .onChange(of: selectedImage) { newImage in
-                if let image = newImage {
+            .onChange(of: selectedImage) { newValue in
+                if let image = newValue {
                     processImage(image)
                 }
             }
