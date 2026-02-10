@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var selectedFilter: String = "All"
     @State private var showingAddButton = false
     @State private var showingManageView = false
+    @State private var showingBulkImport = false
     @State private var editingButton: SoundButton?
     @State private var isEditMode = false
     
@@ -69,6 +70,10 @@ struct ContentView: View {
                         Button(action: { showingAddButton = true }) {
                             Label("Add Sound Button", systemImage: "plus.circle")
                         }
+                        Button(action: { showingBulkImport = true }) {
+                            Label("Bulk Import (up to 50)", systemImage: "square.stack.3d.up")
+                        }
+                        Divider()
                         Button(action: { showingManageView = true }) {
                             Label("Manage Events & Categories", systemImage: "slider.horizontal.3")
                         }
@@ -80,6 +85,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingAddButton) {
                 AddButtonView(preselectedCategory: selectedFilter == "All" ? nil : selectedFilter)
+            }
+            .sheet(isPresented: $showingBulkImport) {
+                BulkImportView()
             }
             .sheet(isPresented: $showingManageView) {
                 ManageView()
@@ -95,44 +103,6 @@ struct ContentView: View {
     var eventSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
-                // "All" option
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .stroke(
-                                dataStore.selectedEventID == nil ?
-                                LinearGradient(colors: [Color(hex: "#6366f1"), Color(hex: "#ec4899")], startPoint: .topLeading, endPoint: .bottomTrailing) :
-                                LinearGradient(colors: [Color.gray.opacity(0.3), Color.gray.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                                lineWidth: 3
-                            )
-                            .frame(width: 68, height: 68)
-                        
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(hex: "#6366f1").opacity(0.3), Color(hex: "#8b5cf6").opacity(0.3)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 60, height: 60)
-                        
-                        Image(systemName: "music.note.list")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                    }
-                    
-                    Text("All")
-                        .font(.caption2)
-                        .fontWeight(dataStore.selectedEventID == nil ? .semibold : .regular)
-                        .foregroundColor(dataStore.selectedEventID == nil ? .white : .gray)
-                }
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3)) {
-                        dataStore.selectEvent(nil)
-                    }
-                }
-                
                 // Event circles
                 ForEach(dataStore.events) { event in
                     VStack(spacing: 6) {
@@ -235,6 +205,15 @@ struct ContentView: View {
         VStack(spacing: 20) {
             Spacer()
             
+            // DJ Kids branding (subtle)
+            if let _ = UIImage(named: "djkids") {
+                Image("djkids")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 80, height: 80)
+                    .opacity(0.6)
+            }
+            
             ZStack {
                 Circle()
                     .fill(Color(hex: "#6366f1").opacity(0.1))
@@ -276,6 +255,28 @@ struct ContentView: View {
             }
             
             Spacer()
+            
+            // Subtle branding at bottom
+            djKidsBranding
+        }
+    }
+    
+    // MARK: - DJ Kids Branding
+    
+    var djKidsBranding: some View {
+        Group {
+            if let _ = UIImage(named: "djkids") {
+                HStack(spacing: 6) {
+                    Image("djkids")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 20, height: 20)
+                    Text("Powered by DJ Kids")
+                        .font(.caption2)
+                }
+                .foregroundColor(.gray.opacity(0.5))
+                .padding(.bottom, 8)
+            }
         }
     }
     
@@ -325,6 +326,11 @@ struct ContentView: View {
                     .onLongPressGesture {
                         editingButton = button
                     }
+                }
+                
+                // Add Sound Button in grid
+                AddSoundGridButton {
+                    showingAddButton = true
                 }
             }
             .padding(16)
@@ -637,6 +643,48 @@ struct ModernSoundButtonView: View {
            let songArtwork = song.artwork {
             artwork = songArtwork.image(at: CGSize(width: 96, height: 96))
         }
+    }
+}
+
+// MARK: - Add Sound Grid Button
+
+struct AddSoundGridButton: View {
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // Dashed border background
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.white.opacity(0.03))
+                
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(
+                        Color.white.opacity(0.2),
+                        style: StrokeStyle(lineWidth: 2, dash: [8, 4])
+                    )
+                
+                VStack(spacing: 8) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(hex: "#6366f1").opacity(0.2))
+                            .frame(width: 48, height: 48)
+                        
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .foregroundColor(Color(hex: "#6366f1"))
+                    }
+                    
+                    Text("Add Sound")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundColor(.gray)
+                }
+                .padding(10)
+            }
+            .frame(height: 110)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

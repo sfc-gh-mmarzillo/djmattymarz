@@ -9,6 +9,7 @@ struct ManageView: View {
     enum ManageTab: String, CaseIterable {
         case events = "Events"
         case categories = "Categories"
+        case settings = "Settings"
     }
     
     var body: some View {
@@ -36,6 +37,9 @@ struct ManageView: View {
                         
                         CategoriesListView()
                             .tag(ManageTab.categories)
+                        
+                        DefaultSettingsView()
+                            .tag(ManageTab.settings)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                 }
@@ -92,6 +96,7 @@ struct EventsListView: View {
     @State private var newEventColor = "#6366f1"
     @State private var newEventIcon = "star.fill"
     @State private var newEventDate = Date()
+    @State private var includeDateInEvent = false
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -135,6 +140,13 @@ struct EventsListView: View {
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
+                
+                // Expand/collapse chevron
+                if !showingAddEvent {
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
             }
             
             if showingAddEvent {
@@ -150,18 +162,36 @@ struct EventsListView: View {
                     .background(Color.white.opacity(0.1))
                     .cornerRadius(12)
                     
-                    // Event Date
-                    HStack {
-                        Image(systemName: "calendar")
-                            .foregroundColor(.gray)
-                        DatePicker("", selection: $newEventDate, displayedComponents: .date)
-                            .labelsHidden()
-                            .colorScheme(.dark)
-                        Spacer()
+                    // Optional Event Date
+                    VStack(spacing: 8) {
+                        HStack {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.gray)
+                            Text("Include Date")
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                            Spacer()
+                            Toggle("", isOn: $includeDateInEvent)
+                                .labelsHidden()
+                                .tint(Color(hex: "#6366f1"))
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        
+                        if includeDateInEvent {
+                            HStack {
+                                DatePicker("", selection: $newEventDate, displayedComponents: .date)
+                                    .labelsHidden()
+                                    .colorScheme(.dark)
+                                Spacer()
+                            }
+                            .padding()
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(12)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
-                    .padding()
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(12)
                     
                     // Icon Selection
                     VStack(alignment: .leading, spacing: 8) {
@@ -218,6 +248,7 @@ struct EventsListView: View {
                         Button(action: {
                             withAnimation { showingAddEvent = false }
                             newEventName = ""
+                            includeDateInEvent = false
                         }) {
                             Text("Cancel")
                                 .fontWeight(.semibold)
@@ -266,6 +297,7 @@ struct EventsListView: View {
                 }
             }
         }
+        .animation(.spring(response: 0.3), value: includeDateInEvent)
     }
     
     private var emptyEventsState: some View {
@@ -289,15 +321,18 @@ struct EventsListView: View {
         guard !newEventName.isEmpty else { return }
         let event = Event(
             name: newEventName,
-            date: newEventDate,
+            date: includeDateInEvent ? newEventDate : nil,
             colorHex: newEventColor,
             iconName: newEventIcon
         )
         dataStore.addEvent(event)
+        // Auto-select newly created event
+        dataStore.selectEvent(event)
         newEventName = ""
         newEventColor = "#6366f1"
         newEventIcon = "star.fill"
         newEventDate = Date()
+        includeDateInEvent = false
         withAnimation { showingAddEvent = false }
     }
 }
@@ -306,6 +341,7 @@ struct EventCard: View {
     @EnvironmentObject var dataStore: DataStore
     let event: Event
     @State private var showingDeleteAlert = false
+    @State private var showingLastEventAlert = false
     
     var buttonCount: Int {
         dataStore.buttons.filter { $0.eventID == event.id }.count
@@ -313,6 +349,10 @@ struct EventCard: View {
     
     var categoryCount: Int {
         dataStore.categories.filter { $0.eventID == event.id }.count
+    }
+    
+    var isLastEvent: Bool {
+        dataStore.events.count <= 1
     }
     
     var body: some View {
@@ -337,6 +377,13 @@ struct EventCard: View {
                     .font(.headline)
                     .foregroundColor(.white)
                 
+                // Show date if available
+                if let date = event.date {
+                    Text(date, style: .date)
+                        .font(.caption)
+                        .foregroundColor(Color(hex: event.colorHex))
+                }
+                
                 HStack(spacing: 12) {
                     Label("\(buttonCount) sounds", systemImage: "speaker.wave.2.fill")
                     Label("\(categoryCount) categories", systemImage: "tag.fill")
@@ -354,10 +401,16 @@ struct EventCard: View {
                     .font(.title3)
             }
             
-            // Delete button
-            Button(action: { showingDeleteAlert = true }) {
+            // Delete button (disabled for last event)
+            Button(action: {
+                if isLastEvent {
+                    showingLastEventAlert = true
+                } else {
+                    showingDeleteAlert = true
+                }
+            }) {
                 Image(systemName: "trash")
-                    .foregroundColor(.red.opacity(0.8))
+                    .foregroundColor(isLastEvent ? .gray.opacity(0.4) : .red.opacity(0.8))
             }
         }
         .padding(16)
@@ -376,11 +429,8 @@ struct EventCard: View {
         )
         .onTapGesture {
             withAnimation(.spring(response: 0.3)) {
-                if dataStore.selectedEventID == event.id {
-                    dataStore.selectEvent(nil)
-                } else {
-                    dataStore.selectEvent(event)
-                }
+                // Always select the tapped event (no deselection)
+                dataStore.selectEvent(event)
             }
         }
         .alert("Delete Event?", isPresented: $showingDeleteAlert) {
@@ -390,6 +440,11 @@ struct EventCard: View {
             }
         } message: {
             Text("This will also delete all categories and sound buttons specific to this event.")
+        }
+        .alert("Cannot Delete", isPresented: $showingLastEventAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("You must have at least one event. Create another event before deleting this one.")
         }
     }
 }
@@ -731,6 +786,247 @@ struct CategoryCard: View {
         } message: {
             Text("This will remove the category from all sound buttons.")
         }
+    }
+}
+
+// MARK: - Default Settings View
+
+struct DefaultSettingsView: View {
+    @EnvironmentObject var dataStore: DataStore
+    
+    @State private var selectedColor: String = "#6366f1"
+    @State private var fadeOutEnabled: Bool = false
+    @State private var fadeOutDuration: Double = 2.0
+    @State private var selectedCategories: Set<String> = []
+    
+    let colorOptions = [
+        "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
+        "#f97316", "#eab308", "#22c55e", "#14b8a6",
+        "#06b6d4", "#3b82f6"
+    ]
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Info header
+                infoHeader
+                
+                // Default Color
+                colorCard
+                
+                // Default Categories
+                categoriesCard
+                
+                // Fade Out Settings
+                fadeOutCard
+            }
+            .padding()
+        }
+        .background(Color.clear)
+        .onAppear {
+            loadCurrentSettings()
+        }
+    }
+    
+    private var infoHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "gear")
+                .font(.title2)
+                .foregroundColor(Color(hex: "#6366f1"))
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Default Song Settings")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                Text("These settings will be pre-selected when adding new songs")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(hex: "#6366f1").opacity(0.1))
+        )
+    }
+    
+    private var colorCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Default Button Color", systemImage: "paintpalette")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            HStack(spacing: 10) {
+                ForEach(colorOptions, id: \.self) { color in
+                    Button(action: {
+                        selectedColor = color
+                        saveSettings()
+                    }) {
+                        Circle()
+                            .fill(Color(hex: color))
+                            .frame(width: 32, height: 32)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: selectedColor == color ? 3 : 0)
+                            )
+                            .scaleEffect(selectedColor == color ? 1.1 : 1.0)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.06))
+        )
+        .animation(.spring(response: 0.3), value: selectedColor)
+    }
+    
+    private var categoriesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Default Categories", systemImage: "tag")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            Text("Pre-select categories for new sounds")
+                .font(.caption)
+                .foregroundColor(.gray)
+            
+            if dataStore.filteredCategories.isEmpty {
+                Text("No categories available. Create some in the Categories tab.")
+                    .font(.caption)
+                    .foregroundColor(.gray.opacity(0.6))
+                    .padding(.vertical, 8)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(dataStore.filteredCategories) { category in
+                            Button(action: {
+                                if selectedCategories.contains(category.name) {
+                                    selectedCategories.remove(category.name)
+                                } else {
+                                    selectedCategories.insert(category.name)
+                                }
+                                saveSettings()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: category.iconName)
+                                        .font(.caption2)
+                                    Text(category.name)
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundColor(selectedCategories.contains(category.name) ? .white : .gray)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    selectedCategories.contains(category.name) ?
+                                    Color(hex: category.colorHex) :
+                                    Color.white.opacity(0.1)
+                                )
+                                .cornerRadius(16)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.06))
+        )
+    }
+    
+    private var fadeOutCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Default Fade Out", systemImage: "speaker.wave.3.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            // Toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable Fade Out by Default")
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                    Text("New sounds will have fade out enabled")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Toggle("", isOn: $fadeOutEnabled)
+                    .labelsHidden()
+                    .tint(Color(hex: "#6366f1"))
+                    .onChange(of: fadeOutEnabled) { _ in
+                        saveSettings()
+                    }
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+            
+            // Duration selector (only show if enabled)
+            if fadeOutEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Default Duration")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    
+                    HStack(spacing: 8) {
+                        ForEach([1.0, 1.5, 2.0, 3.0, 5.0], id: \.self) { duration in
+                            Button(action: {
+                                fadeOutDuration = duration
+                                saveSettings()
+                            }) {
+                                Text("\(String(format: "%.1f", duration))s")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundColor(fadeOutDuration == duration ? .white : .gray)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        fadeOutDuration == duration ?
+                                        Color(hex: "#6366f1") :
+                                        Color.white.opacity(0.1)
+                                    )
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.06))
+        )
+        .animation(.spring(response: 0.3), value: fadeOutEnabled)
+    }
+    
+    private func loadCurrentSettings() {
+        let settings = dataStore.defaultSettings
+        selectedColor = settings.colorHex
+        fadeOutEnabled = settings.fadeOutEnabled
+        fadeOutDuration = settings.fadeOutDuration
+        selectedCategories = Set(settings.defaultCategories)
+    }
+    
+    private func saveSettings() {
+        let settings = DefaultSongSettings(
+            colorHex: selectedColor,
+            fadeOutEnabled: fadeOutEnabled,
+            fadeOutDuration: fadeOutDuration,
+            defaultCategories: Array(selectedCategories),
+            startFromBeginning: true
+        )
+        dataStore.updateDefaultSettings(settings)
     }
 }
 

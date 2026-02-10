@@ -40,7 +40,7 @@ struct AddButtonView: View {
                 .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 10) {
                         songSelectionCard
                         
                         if selectedSong != nil {
@@ -51,7 +51,8 @@ struct AddButtonView: View {
                             colorSelectionCard
                         }
                     }
-                    .padding(16)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                 }
             }
             .navigationTitle("Add Sound")
@@ -69,6 +70,21 @@ struct AddButtonView: View {
                 }
             }
             .onAppear {
+                // Apply default settings
+                let defaults = dataStore.defaultSettings
+                selectedColor = defaults.colorHex
+                fadeOutEnabled = defaults.fadeOutEnabled
+                fadeOutDuration = defaults.fadeOutDuration
+                if defaults.startFromBeginning {
+                    startTime = 0
+                }
+                
+                // Add default categories
+                for category in defaults.defaultCategories {
+                    selectedCategories.insert(category)
+                }
+                
+                // Also add preselected category if provided
                 if let category = preselectedCategory {
                     selectedCategories.insert(category)
                 }
@@ -79,27 +95,27 @@ struct AddButtonView: View {
         }
     }
     
-    // MARK: - Song Selection Card
+    // MARK: - Song Selection Card (Compact)
     
     private var songSelectionCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("Select Song", systemImage: "music.note")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
             Button(action: { showingSongPicker = true }) {
-                HStack(spacing: 14) {
-                    // Album artwork
+                HStack(spacing: 10) {
+                    // Album artwork - smaller
                     ZStack {
                         if let song = selectedSong,
                            let artwork = song.artwork {
-                            Image(uiImage: artwork.image(at: CGSize(width: 70, height: 70)) ?? UIImage())
+                            Image(uiImage: artwork.image(at: CGSize(width: 50, height: 50)) ?? UIImage())
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 70, height: 70)
-                                .cornerRadius(12)
+                                .frame(width: 50, height: 50)
+                                .cornerRadius(8)
                         } else {
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: 8)
                                 .fill(
                                     LinearGradient(
                                         colors: [Color(hex: "#6366f1").opacity(0.3), Color(hex: "#8b5cf6").opacity(0.2)],
@@ -107,29 +123,29 @@ struct AddButtonView: View {
                                         endPoint: .bottomTrailing
                                     )
                                 )
-                                .frame(width: 70, height: 70)
+                                .frame(width: 50, height: 50)
                                 .overlay(
                                     Image(systemName: "music.note")
-                                        .font(.title)
+                                        .font(.title3)
                                         .foregroundColor(.white.opacity(0.6))
                                 )
                         }
                     }
                     
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(selectedSong?.title ?? "Tap to select a song")
-                            .font(.headline)
+                            .font(.subheadline.weight(.medium))
                             .foregroundColor(selectedSong == nil ? .gray : .white)
                             .lineLimit(1)
                         
                         if let artist = selectedSong?.artist {
                             Text(artist)
-                                .font(.subheadline)
+                                .font(.caption)
                                 .foregroundColor(.gray)
                                 .lineLimit(1)
                         } else if selectedSong == nil {
                             Text("Choose from your music library")
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundColor(.gray)
                         }
                     }
@@ -137,71 +153,69 @@ struct AddButtonView: View {
                     Spacer()
                     
                     Image(systemName: "chevron.right")
+                        .font(.caption)
                         .foregroundColor(.gray)
                 }
-                .padding(16)
+                .padding(10)
                 .background(Color.white.opacity(0.08))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
+                .cornerRadius(12)
             }
         }
-        .cardStyle()
+        .compactCardStyle()
     }
     
-    // MARK: - Button Name Card
+    // MARK: - Button Name Card (Compact)
     
     private var buttonNameCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("Button Name", systemImage: "textformat")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
             HStack {
                 Image(systemName: "pencil")
+                    .font(.caption)
                     .foregroundColor(.gray)
                 TextField("Enter button name", text: $buttonName)
+                    .font(.subheadline)
                     .foregroundColor(.white)
             }
-            .padding(16)
+            .padding(10)
             .background(Color.white.opacity(0.08))
-            .cornerRadius(12)
+            .cornerRadius(10)
         }
-        .cardStyle()
+        .compactCardStyle()
     }
     
-    // MARK: - Start Point Card
+    // MARK: - Start Point Card (Compact)
     
     private var startPointCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("Start Point", systemImage: "clock")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
-            VStack(spacing: 16) {
-                // Time display
+            VStack(spacing: 10) {
+                // Time display - more compact
                 HStack {
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("Start at")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundColor(.gray)
                         Text(formatTime(startTime))
-                            .font(.title2)
-                            .fontWeight(.bold)
+                            .font(.title3.weight(.bold))
                             .foregroundColor(.white)
                             .monospacedDigit()
                     }
                     
                     Spacer()
                     
-                    VStack(alignment: .trailing) {
+                    VStack(alignment: .trailing, spacing: 2) {
                         Text("Duration")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundColor(.gray)
                         Text(formatTime(songDuration))
-                            .font(.subheadline)
+                            .font(.caption)
                             .foregroundColor(.gray)
                             .monospacedDigit()
                     }
@@ -209,14 +223,12 @@ struct AddButtonView: View {
                 
                 // Slider with gradient track
                 ZStack(alignment: .leading) {
-                    // Background track
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: 3)
                         .fill(Color.white.opacity(0.1))
-                        .frame(height: 8)
+                        .frame(height: 6)
                     
-                    // Progress track
                     GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 3)
                             .fill(
                                 LinearGradient(
                                     colors: [Color(hex: "#6366f1"), Color(hex: "#ec4899")],
@@ -224,9 +236,9 @@ struct AddButtonView: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: geo.size.width * (songDuration > 0 ? startTime / songDuration : 0), height: 8)
+                            .frame(width: geo.size.width * (songDuration > 0 ? startTime / songDuration : 0), height: 6)
                     }
-                    .frame(height: 8)
+                    .frame(height: 6)
                 }
                 
                 Slider(value: $startTime, in: 0...max(songDuration, 1))
@@ -237,20 +249,19 @@ struct AddButtonView: View {
                         }
                     }
                 
-                // Control buttons
-                HStack(spacing: 10) {
+                // Control buttons - more compact
+                HStack(spacing: 6) {
                     ForEach([("-5s", -5.0), ("-1s", -1.0), ("+1s", 1.0), ("+5s", 5.0)], id: \.0) { label, offset in
                         Button(action: {
                             startTime = max(0, min(songDuration, startTime + offset))
                         }) {
                             Text(label)
-                                .font(.caption)
-                                .fontWeight(.medium)
+                                .font(.caption2.weight(.medium))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
                                 .background(Color.white.opacity(0.1))
-                                .cornerRadius(8)
+                                .cornerRadius(6)
                         }
                     }
                     
@@ -270,10 +281,10 @@ struct AddButtonView: View {
                             if audioPlayer.isLoading {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.8)
+                                    .scaleEffect(0.7)
                             } else {
                                 Image(systemName: audioPlayer.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
-                                    .font(.title)
+                                    .font(.title2)
                                     .foregroundStyle(
                                         audioPlayer.isPreviewing ?
                                         LinearGradient(colors: [Color(hex: "#f43f5e"), Color(hex: "#ec4899")], startPoint: .topLeading, endPoint: .bottomTrailing) :
@@ -281,147 +292,145 @@ struct AddButtonView: View {
                                     )
                             }
                         }
-                        .frame(width: 36, height: 36)
+                        .frame(width: 30, height: 30)
                     }
                     .disabled(audioPlayer.isLoading)
                 }
             }
         }
-        .cardStyle()
+        .compactCardStyle()
     }
     
-    // MARK: - Fade Out Card
+    // MARK: - Fade Out Card (Compact)
     
     private var fadeOutCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("Fade Out", systemImage: "speaker.wave.3.fill")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
             // Toggle
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Enable Fade Out")
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundColor(.white)
                     Text("Gradually lower volume when stopping")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.gray)
                 }
                 Spacer()
                 Toggle("", isOn: $fadeOutEnabled)
                     .labelsHidden()
                     .tint(Color(hex: "#6366f1"))
+                    .scaleEffect(0.85)
             }
-            .padding(12)
+            .padding(10)
             .background(Color.white.opacity(0.08))
-            .cornerRadius(12)
+            .cornerRadius(10)
             
             // Duration selector (only show if enabled)
             if fadeOutEnabled {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Duration")
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                        Spacer()
-                        Text("\(String(format: "%.1f", fadeOutDuration))s")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(Color(hex: "#6366f1"))
-                    }
-                    
-                    HStack(spacing: 12) {
+                HStack {
+                    Text("Duration")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Spacer()
+                    HStack(spacing: 6) {
                         ForEach([1.0, 1.5, 2.0, 3.0, 5.0], id: \.self) { duration in
                             Button(action: { fadeOutDuration = duration }) {
                                 Text("\(String(format: "%.1f", duration))s")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
+                                    .font(.caption2.weight(.medium))
                                     .foregroundColor(fadeOutDuration == duration ? .white : .gray)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
                                     .background(
                                         fadeOutDuration == duration ?
                                         Color(hex: "#6366f1") :
                                         Color.white.opacity(0.1)
                                     )
-                                    .cornerRadius(8)
+                                    .cornerRadius(6)
                             }
                         }
                     }
                 }
-                .padding(12)
+                .padding(10)
                 .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
+                .cornerRadius(10)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .cardStyle()
+        .compactCardStyle()
         .animation(.spring(response: 0.3), value: fadeOutEnabled)
     }
     
-    // MARK: - Categories Card
+    // MARK: - Categories Card (Compact)
     
     private var categoriesCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("Categories", systemImage: "tag")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
             if dataStore.filteredCategories.isEmpty {
                 HStack {
                     Image(systemName: "info.circle")
+                        .font(.caption)
                         .foregroundColor(.gray)
-                    Text("No categories available. Create some in Manage.")
-                        .font(.subheadline)
+                    Text("No categories yet. Create some in Manage.")
+                        .font(.caption)
                         .foregroundColor(.gray)
                 }
-                .padding()
+                .padding(8)
             } else {
-                // iOS 15 compatible wrapping layout
-                WrappingHStack(items: dataStore.filteredCategories, spacing: 10) { category in
-                    CategoryChip(
-                        category: category,
-                        isSelected: selectedCategories.contains(category.name)
-                    ) {
-                        if selectedCategories.contains(category.name) {
-                            selectedCategories.remove(category.name)
-                        } else {
-                            selectedCategories.insert(category.name)
+                // Simple horizontal scroll for categories
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(dataStore.filteredCategories) { category in
+                            CompactCategoryChip(
+                                category: category,
+                                isSelected: selectedCategories.contains(category.name)
+                            ) {
+                                if selectedCategories.contains(category.name) {
+                                    selectedCategories.remove(category.name)
+                                } else {
+                                    selectedCategories.insert(category.name)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        .cardStyle()
+        .compactCardStyle()
     }
     
-    // MARK: - Color Selection Card
+    // MARK: - Color Selection Card (Compact)
     
     private var colorSelectionCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Label("Button Color", systemImage: "paintpalette")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(colorOptions, id: \.self) { color in
                     Button(action: { selectedColor = color }) {
                         Circle()
                             .fill(Color(hex: color))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 28, height: 28)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white, lineWidth: selectedColor == color ? 3 : 0)
+                                    .stroke(Color.white, lineWidth: selectedColor == color ? 2 : 0)
                             )
-                            .scaleEffect(selectedColor == color ? 1.15 : 1.0)
+                            .scaleEffect(selectedColor == color ? 1.1 : 1.0)
                             .animation(.spring(response: 0.3), value: selectedColor)
                     }
                 }
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
         }
-        .cardStyle()
+        .compactCardStyle()
     }
     
     // MARK: - Toolbar
@@ -470,45 +479,73 @@ struct AddButtonView: View {
     }
 }
 
-// MARK: - Category Chip
+// MARK: - Compact Category Chip
 
-struct CategoryChip: View {
+struct CompactCategoryChip: View {
     let category: Category
     let isSelected: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Image(systemName: category.iconName)
-                    .font(.caption)
+                    .font(.caption2)
                 Text(category.name)
-                    .font(.subheadline)
+                    .font(.caption)
                     .fontWeight(isSelected ? .semibold : .medium)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
                 isSelected ?
                 Color(hex: category.colorHex) :
                 Color.white.opacity(0.08)
             )
             .foregroundColor(isSelected ? .white : .gray)
-            .cornerRadius(20)
+            .cornerRadius(14)
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 14)
                     .stroke(
                         isSelected ? Color.clear : Color.white.opacity(0.1),
                         lineWidth: 1
                     )
             )
         }
-        .scaleEffect(isSelected ? 1.02 : 1.0)
-        .animation(.spring(response: 0.3), value: isSelected)
     }
 }
 
-// MARK: - Wrapping HStack (iOS 15 compatible)
+// MARK: - Compact Card Style Modifier
+
+extension View {
+    func compactCardStyle() -> some View {
+        self
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+    }
+    
+    func cardStyle() -> some View {
+        self
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+    }
+}
+
+// MARK: - Wrapping HStack (iOS 15 compatible) - kept for other views
 
 struct WrappingHStack<Item: Identifiable, Content: View>: View {
     let items: [Item]
@@ -562,26 +599,46 @@ struct WrappingHStack<Item: Identifiable, Content: View>: View {
     }
     
     private func calculateHeight() -> CGFloat {
-        // Estimate height based on item count - will adjust dynamically
         let estimatedRows = max(1, (items.count + 2) / 3)
         return CGFloat(estimatedRows) * 50
     }
 }
 
-// MARK: - Card Style Modifier
+// MARK: - CategoryChip (kept for other views)
 
-extension View {
-    func cardStyle() -> some View {
-        self
-            .padding(20)
+struct CategoryChip: View {
+    let category: Category
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: category.iconName)
+                    .font(.caption)
+                Text(category.name)
+                    .font(.subheadline)
+                    .fontWeight(isSelected ? .semibold : .medium)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(
+                isSelected ?
+                Color(hex: category.colorHex) :
+                Color.white.opacity(0.08)
+            )
+            .foregroundColor(isSelected ? .white : .gray)
+            .cornerRadius(20)
+            .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(
+                        isSelected ? Color.clear : Color.white.opacity(0.1),
+                        lineWidth: 1
                     )
             )
+        }
+        .scaleEffect(isSelected ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3), value: isSelected)
     }
 }
 

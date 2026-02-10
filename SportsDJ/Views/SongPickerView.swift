@@ -196,22 +196,68 @@ struct SongPickerView: View {
     
     private var libraryListView: some View {
         Group {
-            if filteredSongs.isEmpty {
+            if filteredSongs.isEmpty && searchText.isEmpty {
                 emptyLibraryView
+            } else if filteredSongs.isEmpty {
+                noSearchResultsView
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(filteredSongs, id: \.persistentID) { song in
-                            SongRow(song: song) {
-                                selectedSong = song
-                                songDuration = song.playbackDuration
-                                dismiss()
+                VStack(spacing: 0) {
+                    // Info banner explaining source requirements
+                    libraryInfoBanner
+                    
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(filteredSongs, id: \.persistentID) { song in
+                                SongRow(song: song) {
+                                    selectedSong = song
+                                    songDuration = song.playbackDuration
+                                    dismiss()
+                                }
                             }
                         }
+                        .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 16)
                 }
             }
+        }
+    }
+    
+    private var libraryInfoBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "info.circle.fill")
+                .font(.caption)
+                .foregroundColor(Color(hex: "#6366f1"))
+            
+            Text("Songs must be in your Apple Music library (synced or downloaded)")
+                .font(.caption2)
+                .foregroundColor(.gray)
+            
+            Spacer()
+        }
+        .padding(10)
+        .background(Color(hex: "#6366f1").opacity(0.1))
+        .cornerRadius(8)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+    
+    private var noSearchResultsView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 40))
+                .foregroundColor(.gray)
+            
+            Text("No songs match '\(searchText)'")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            Text("Try a different search term")
+                .font(.subheadline)
+                .foregroundColor(.gray)
+            
+            Spacer()
         }
     }
     
@@ -229,15 +275,30 @@ struct SongPickerView: View {
                     .foregroundColor(Color(hex: "#6366f1"))
             }
             
-            VStack(spacing: 8) {
+            VStack(spacing: 12) {
                 Text("No Songs Found")
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                 
-                Text("Add music to your library in the\nApple Music app")
+                Text("To use songs in SportsDJ, they must be\nin your Apple Music library:")
                     .font(.subheadline)
                     .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                
+                // Instructions
+                VStack(alignment: .leading, spacing: 8) {
+                    instructionRow(number: "1", text: "Open the Music app")
+                    instructionRow(number: "2", text: "Add songs to your Library")
+                    instructionRow(number: "3", text: "Download songs for offline use")
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(12)
+                
+                Text("Tip: Songs from Apple Music subscription\nor synced from iTunes/Finder work great!")
+                    .font(.caption)
+                    .foregroundColor(.gray.opacity(0.8))
                     .multilineTextAlignment(.center)
             }
             
@@ -259,6 +320,24 @@ struct SongPickerView: View {
                 )
                 .cornerRadius(25)
             }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private func instructionRow(number: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Text(number)
+                .font(.caption.weight(.bold))
+                .foregroundColor(.white)
+                .frame(width: 20, height: 20)
+                .background(Color(hex: "#6366f1"))
+                .cornerRadius(10)
+            
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.9))
             
             Spacer()
         }

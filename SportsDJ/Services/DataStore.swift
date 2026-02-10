@@ -1,20 +1,51 @@
 import Foundation
 import Combine
 
+// MARK: - Default Song Settings
+
+struct DefaultSongSettings: Codable {
+    var colorHex: String = "#6366f1"
+    var fadeOutEnabled: Bool = false
+    var fadeOutDuration: Double = 2.0
+    var defaultCategories: [String] = []
+    var startFromBeginning: Bool = true
+}
+
 class DataStore: ObservableObject {
     @Published var buttons: [SoundButton] = []
     @Published var categories: [Category] = []
     @Published var events: [Event] = []
     @Published var selectedEventID: UUID?
+    @Published var defaultSettings: DefaultSongSettings = DefaultSongSettings()
     
     private let buttonsKey = "soundButtons"
     private let categoriesKey = "categories"
     private let eventsKey = "events"
     private let selectedEventKey = "selectedEvent"
+    private let defaultSettingsKey = "defaultSongSettings"
     
     init() {
         loadData()
         migrateDataIfNeeded()
+        
+        // Create default event for new users
+        if events.isEmpty {
+            let defaultEvent = Event(
+                name: "My First Event",
+                date: nil,
+                colorHex: "#6366f1",
+                iconName: "star.fill"
+            )
+            events.append(defaultEvent)
+            saveEvents()
+        }
+        
+        // Always ensure an event is selected
+        if selectedEventID == nil && !events.isEmpty {
+            selectedEventID = events.first?.id
+            UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
+        }
+        
         if categories.isEmpty {
             categories = [
                 Category(name: "Goals", colorHex: "#34C759", iconName: "sportscourt.fill"),
@@ -109,6 +140,9 @@ class DataStore: ObservableObject {
     }
     
     func deleteEvent(_ event: Event) {
+        // Prevent deleting the last event
+        guard events.count > 1 else { return }
+        
         // Delete all categories specific to this event
         categories.removeAll { $0.eventID == event.id }
         
@@ -118,9 +152,10 @@ class DataStore: ObservableObject {
         // Remove the event
         events.removeAll { $0.id == event.id }
         
-        // Clear selection if deleted event was selected
+        // Auto-select another event if deleted event was selected
         if selectedEventID == event.id {
-            selectedEventID = nil
+            selectedEventID = events.first?.id
+            UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
         }
         
         saveEvents()
@@ -131,6 +166,13 @@ class DataStore: ObservableObject {
     func selectEvent(_ event: Event?) {
         selectedEventID = event?.id
         UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
+    }
+    
+    // MARK: - Default Settings Methods
+    
+    func updateDefaultSettings(_ settings: DefaultSongSettings) {
+        defaultSettings = settings
+        saveDefaultSettings()
     }
     
     // MARK: - Persistence
@@ -153,6 +195,12 @@ class DataStore: ObservableObject {
         }
     }
     
+    private func saveDefaultSettings() {
+        if let encoded = try? JSONEncoder().encode(defaultSettings) {
+            UserDefaults.standard.set(encoded, forKey: defaultSettingsKey)
+        }
+    }
+    
     private func loadData() {
         if let data = UserDefaults.standard.data(forKey: buttonsKey),
            let decoded = try? JSONDecoder().decode([SoundButton].self, from: data) {
@@ -171,6 +219,11 @@ class DataStore: ObservableObject {
         
         if let eventIDString = UserDefaults.standard.string(forKey: selectedEventKey) {
             selectedEventID = UUID(uuidString: eventIDString)
+        }
+        
+        if let data = UserDefaults.standard.data(forKey: defaultSettingsKey),
+           let decoded = try? JSONDecoder().decode(DefaultSongSettings.self, from: data) {
+            defaultSettings = decoded
         }
     }
     

@@ -41,11 +41,11 @@ struct SoundButton: Identifiable, Codable {
 struct Event: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
-    var date: Date
+    var date: Date?  // Optional - not all events need a date
     var colorHex: String
     var iconName: String
     
-    init(name: String, date: Date = Date(), colorHex: String = "#007AFF", iconName: String = "star.fill") {
+    init(name: String, date: Date? = nil, colorHex: String = "#007AFF", iconName: String = "star.fill") {
         self.name = name
         self.date = date
         self.colorHex = colorHex
