@@ -68,7 +68,7 @@ struct EditButtonView: View {
                     Button("Save") {
                         saveChanges()
                     }
-                    .fontWeight(.semibold)
+                    .font(.body.weight(.semibold))
                     .foregroundColor(buttonName.isEmpty ? .gray : Color(hex: "#6366f1"))
                     .disabled(buttonName.isEmpty)
                 }
