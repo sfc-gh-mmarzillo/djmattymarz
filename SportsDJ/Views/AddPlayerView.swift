@@ -15,7 +15,7 @@ struct AddPlayerView: View {
     @State private var voiceVolume: Float = 1.0
     @State private var selectedVoiceID: String? = nil
     
-    @StateObject private var speechService = SpeechService.shared
+    @ObservedObject private var speechService = SpeechService.shared
     
     var body: some View {
         NavigationView {

@@ -30,7 +30,7 @@ struct EditButtonView: View {
     @State private var voiceOverPostDelay: Double = 0.5
     @State private var selectedVoiceID: String? = nil
     
-    @StateObject private var speechService = SpeechService.shared
+    @ObservedObject private var speechService = SpeechService.shared
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
