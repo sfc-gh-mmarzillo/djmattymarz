@@ -75,9 +75,8 @@ class DataStore: ObservableObject {
     }
     
     var filteredButtons: [SoundButton] {
-        buttons.filter { button in
-            button.eventID == nil || button.eventID == selectedEventID
-        }
+        guard let eventID = selectedEventID else { return [] }
+        return buttons.filter { $0.eventID == eventID }
     }
     
     var filteredPlayers: [Player] {
@@ -88,9 +87,13 @@ class DataStore: ObservableObject {
     // MARK: - Button Methods
     
     func addButton(_ button: SoundButton) {
+        guard let eventID = selectedEventID else {
+            print("Warning: Cannot add button without a selected event")
+            return
+        }
         var newButton = button
         newButton.order = buttons.count
-        newButton.eventID = selectedEventID
+        newButton.eventID = eventID
         buttons.append(newButton)
         saveButtons()
     }
@@ -388,6 +391,16 @@ class DataStore: ObservableObject {
         for i in buttons.indices {
             if buttons[i].spotifyURI == nil && buttons[i].musicSource != .appleMusic {
                 needsSave = true
+            }
+        }
+        
+        // Migrate buttons with nil eventID to first available event
+        if let firstEventID = teamEvents.first?.id {
+            for i in buttons.indices {
+                if buttons[i].eventID == nil {
+                    buttons[i].eventID = firstEventID
+                    needsSave = true
+                }
             }
         }
         

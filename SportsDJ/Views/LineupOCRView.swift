@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Vision
 import PhotosUI
 
@@ -115,24 +116,45 @@ struct LineupOCRView: View {
             
             Spacer()
             
-            // Select image button
-            Button(action: { showImagePicker = true }) {
-                HStack {
-                    Image(systemName: "photo.on.rectangle")
-                    Text("Select Screenshot")
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
-                        startPoint: .leading,
-                        endPoint: .trailing
+            // Import buttons
+            VStack(spacing: 12) {
+                // Paste from clipboard button
+                Button(action: pasteFromClipboard) {
+                    HStack {
+                        Image(systemName: "doc.on.clipboard")
+                        Text("Paste from Clipboard")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
                     )
-                )
-                .cornerRadius(12)
+                    .cornerRadius(12)
+                }
+                
+                // Select from photos button
+                Button(action: { showImagePicker = true }) {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle")
+                        Text("Select from Photos")
+                    }
+                    .font(.headline)
+                    .foregroundColor(Color(hex: "#6366f1"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.white.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(hex: "#6366f1"), lineWidth: 1)
+                    )
+                    .cornerRadius(12)
+                }
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -245,6 +267,14 @@ struct LineupOCRView: View {
         let newValue = !allSelected
         for i in recognizedPlayers.indices {
             recognizedPlayers[i].isSelected = newValue
+        }
+    }
+    
+    private func pasteFromClipboard() {
+        if let image = UIPasteboard.general.image {
+            processImage(image)
+        } else {
+            errorMessage = "No image found in clipboard. Copy a screenshot first."
         }
     }
     

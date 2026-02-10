@@ -10,10 +10,26 @@ class SpeechService: NSObject, ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
     private var completionHandler: (() -> Void)?
     
+    // Preferred announcer-style voices (in order of preference)
+    // These are enhanced/premium US English voices that sound more natural
+    private let preferredAnnouncerVoices = [
+        "com.apple.voice.enhanced.en-US.Evan",      // Natural male announcer voice
+        "com.apple.voice.enhanced.en-US.Aaron",     // Professional male voice
+        "com.apple.voice.premium.en-US.Evan",       // Premium version
+        "com.apple.voice.premium.en-US.Aaron",      // Premium version
+        "com.apple.voice.enhanced.en-US.Nicky",     // Clear male voice
+        "com.apple.voice.enhanced.en-US.Tom",       // Deep male voice
+        "com.apple.ttsbundle.siri_male_en-US_compact" // Siri male voice
+    ]
+    
+    // Cache the best available announcer voice
+    private(set) var defaultAnnouncerVoice: AVSpeechSynthesisVoice?
+    
     override init() {
         super.init()
         synthesizer.delegate = self
         loadAvailableVoices()
+        findBestAnnouncerVoice()
     }
     
     // MARK: - Available Voices
@@ -34,10 +50,32 @@ class SpeechService: NSObject, ObservableObject {
             }
     }
     
+    private func findBestAnnouncerVoice() {
+        // Try to find the best announcer voice from our preferred list
+        for voiceId in preferredAnnouncerVoices {
+            if let voice = AVSpeechSynthesisVoice(identifier: voiceId) {
+                defaultAnnouncerVoice = voice
+                return
+            }
+        }
+        
+        // Fallback: find any enhanced US English male voice
+        let enhancedVoices = availableVoices.filter { 
+            $0.quality == .enhanced && $0.language == "en-US" 
+        }
+        if let enhanced = enhancedVoices.first {
+            defaultAnnouncerVoice = enhanced
+            return
+        }
+        
+        // Last resort: default US English voice
+        defaultAnnouncerVoice = AVSpeechSynthesisVoice(language: "en-US")
+    }
+    
     func getVoice(identifier: String?) -> AVSpeechSynthesisVoice? {
         guard let id = identifier else {
-            // Return default voice
-            return AVSpeechSynthesisVoice(language: "en-US")
+            // Return best available announcer voice
+            return defaultAnnouncerVoice ?? AVSpeechSynthesisVoice(language: "en-US")
         }
         return AVSpeechSynthesisVoice(identifier: id)
     }
@@ -45,7 +83,7 @@ class SpeechService: NSObject, ObservableObject {
     func getVoiceName(identifier: String?) -> String {
         guard let id = identifier,
               let voice = AVSpeechSynthesisVoice(identifier: id) else {
-            return "Default"
+            return defaultAnnouncerVoice?.name ?? "Default"
         }
         return voice.name
     }
@@ -83,7 +121,8 @@ class SpeechService: NSObject, ObservableObject {
            let voice = AVSpeechSynthesisVoice(identifier: voiceId) {
             utterance.voice = voice
         } else {
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+            // Use best available announcer voice
+            utterance.voice = defaultAnnouncerVoice ?? AVSpeechSynthesisVoice(language: "en-US")
         }
         
         // Rate: AVSpeechUtterance uses 0.0-1.0, but actual range is more like 0.0-0.75 for usable speech

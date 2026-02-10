@@ -93,11 +93,43 @@ struct Player: Identifiable, Codable, Hashable {
         self.announcementSoundID = announcementSoundID
     }
     
+    // Baseball/softball position abbreviation expansions for natural speech
+    private static let positionExpansions: [String: String] = [
+        "P": "Pitcher",
+        "C": "Catcher",
+        "1B": "First Base",
+        "2B": "Second Base",
+        "3B": "Third Base",
+        "SS": "Shortstop",
+        "LF": "Left Field",
+        "CF": "Center Field",
+        "RF": "Right Field",
+        "DH": "Designated Hitter",
+        "OF": "Outfield",
+        "IF": "Infield",
+        "UT": "Utility",
+        "PH": "Pinch Hitter",
+        "PR": "Pinch Runner",
+        "DP": "Designated Player",
+        "FLEX": "Flex"
+    ]
+    
+    // Expand position abbreviation for natural speech
+    private func expandPosition(_ pos: String) -> String {
+        // Check for exact match (case-insensitive)
+        let upperPos = pos.uppercased().trimmingCharacters(in: .whitespaces)
+        if let expanded = Player.positionExpansions[upperPos] {
+            return expanded
+        }
+        // Return original if no expansion found
+        return pos
+    }
+    
     // Generate announcement text
     var announcementText: String {
-        var text = "Next up, number \(number)"
+        var text = "Now batting, number \(number)"
         if let pos = position, !pos.isEmpty {
-            text += ", \(pos)"
+            text += ", \(expandPosition(pos))"
         }
         text += ", \(name)"
         return text
