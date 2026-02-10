@@ -41,8 +41,8 @@ struct LineupOCRView: View {
                         .foregroundColor(.gray)
                 }
                 
-                if showResults {
-                    ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .confirmationAction) {
+                    if showResults {
                         Button("Import") { importPlayers() }
                             .font(.body.weight(.semibold))
                             .foregroundColor(selectedPlayersCount > 0 ? Color(hex: "#6366f1") : .gray)
