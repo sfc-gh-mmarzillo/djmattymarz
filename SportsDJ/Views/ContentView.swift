@@ -379,13 +379,13 @@ struct ContentView: View {
                             .fill(Color(hex: button.colorHex))
                             .frame(width: 40, height: 40)
                             .overlay(
-                                Image(systemName: button.iconName)
+                                Image(systemName: "music.note")
                                     .font(.system(size: 16))
                                     .foregroundColor(.white)
                             )
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(button.displayName)
+                            Text(button.name)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
