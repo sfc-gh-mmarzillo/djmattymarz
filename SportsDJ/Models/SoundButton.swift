@@ -19,8 +19,10 @@ struct SoundButton: Identifiable, Codable {
     var colorHex: String
     var order: Int
     var eventID: UUID?
+    var fadeOutEnabled: Bool
+    var fadeOutDuration: Double // in seconds
     
-    init(name: String, songPersistentID: UInt64, spotifyURI: String? = nil, musicSource: MusicSource = .appleMusic, startTimeSeconds: Double = 0, categoryTags: [String] = [], colorHex: String = "#007AFF", order: Int = 0, eventID: UUID? = nil) {
+    init(name: String, songPersistentID: UInt64, spotifyURI: String? = nil, musicSource: MusicSource = .appleMusic, startTimeSeconds: Double = 0, categoryTags: [String] = [], colorHex: String = "#007AFF", order: Int = 0, eventID: UUID? = nil, fadeOutEnabled: Bool = false, fadeOutDuration: Double = 2.0) {
         self.name = name
         self.songPersistentID = songPersistentID
         self.spotifyURI = spotifyURI
@@ -30,6 +32,8 @@ struct SoundButton: Identifiable, Codable {
         self.colorHex = colorHex
         self.order = order
         self.eventID = eventID
+        self.fadeOutEnabled = fadeOutEnabled
+        self.fadeOutDuration = fadeOutDuration
     }
 }
 

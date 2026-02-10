@@ -13,13 +13,20 @@ class AudioPlayerService: ObservableObject {
     @Published var currentArtwork: UIImage?
     @Published var isLoading: Bool = false
     @Published var currentMusicSource: MusicSource = .appleMusic
+    @Published var isFadingOut: Bool = false
     
     private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
     private let spotifyService = SpotifyService.shared
     private var timer: Timer?
+    private var fadeTimer: Timer?
     private var targetStartTime: Double = 0
     private var hasSetStartTime: Bool = false
     private var cancellables = Set<AnyCancellable>()
+    
+    // Fade out properties
+    private var currentButton: SoundButton?
+    private var originalVolume: Float = 1.0
+    private var fadeStartVolume: Float = 1.0
     
     init() {
         setupAudioSession()
@@ -99,6 +106,7 @@ class AudioPlayerService: ObservableObject {
     func play(button: SoundButton) {
         stop()
         
+        currentButton = button
         currentButtonID = button.id
         nowPlayingTitle = button.name
         currentMusicSource = button.musicSource
@@ -192,22 +200,120 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    // MARK: - Stop
+    // MARK: - Stop (with optional fade)
     
     func stop() {
+        // Check if we should fade out
+        if let button = currentButton, button.fadeOutEnabled, isPlaying, !isFadingOut {
+            fadeOutAndStop(duration: button.fadeOutDuration)
+            return
+        }
+        
+        // Immediate stop
+        stopImmediately()
+    }
+    
+    func stopImmediately() {
+        // Cancel any ongoing fade
+        cancelFade()
+        
+        // Restore volume if it was changed
+        restoreVolume()
+        
         // Stop both players to be safe
         musicPlayer.stop()
         spotifyService.stop()
         
         isPlaying = false
         isLoading = false
+        isFadingOut = false
         currentButtonID = nil
+        currentButton = nil
         currentTime = 0
         nowPlayingTitle = ""
         currentArtwork = nil
         targetStartTime = 0
         hasSetStartTime = false
         stopTimer()
+    }
+    
+    // MARK: - Fade Out
+    
+    func fadeOutAndStop(duration: Double) {
+        guard !isFadingOut else { return }
+        
+        isFadingOut = true
+        
+        // Get current system volume
+        let audioSession = AVAudioSession.sharedInstance()
+        originalVolume = audioSession.outputVolume
+        fadeStartVolume = originalVolume
+        
+        let fadeSteps = 20
+        let stepDuration = duration / Double(fadeSteps)
+        var currentStep = 0
+        
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            currentStep += 1
+            let progress = Double(currentStep) / Double(fadeSteps)
+            let newVolume = self.fadeStartVolume * Float(1.0 - progress)
+            
+            // Set volume using MPVolumeView (system volume)
+            self.setSystemVolume(newVolume)
+            
+            if currentStep >= fadeSteps {
+                timer.invalidate()
+                self.fadeTimer = nil
+                
+                // Final stop
+                DispatchQueue.main.async {
+                    self.musicPlayer.stop()
+                    self.spotifyService.stop()
+                    
+                    // Restore original volume
+                    self.restoreVolume()
+                    
+                    self.isPlaying = false
+                    self.isLoading = false
+                    self.isFadingOut = false
+                    self.currentButtonID = nil
+                    self.currentButton = nil
+                    self.currentTime = 0
+                    self.nowPlayingTitle = ""
+                    self.currentArtwork = nil
+                    self.targetStartTime = 0
+                    self.hasSetStartTime = false
+                    self.stopTimer()
+                }
+            }
+        }
+    }
+    
+    private func setSystemVolume(_ volume: Float) {
+        // Use MPVolumeView to set system volume
+        let volumeView = MPVolumeView()
+        if let slider = volumeView.subviews.first(where: { $0 is UISlider }) as? UISlider {
+            DispatchQueue.main.async {
+                slider.value = volume
+            }
+        }
+    }
+    
+    private func restoreVolume() {
+        if originalVolume > 0 {
+            setSystemVolume(originalVolume)
+        }
+    }
+    
+    private func cancelFade() {
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        isFadingOut = false
     }
     
     // MARK: - Toggle Play/Pause
@@ -326,6 +432,7 @@ class AudioPlayerService: ObservableObject {
     }
     
     func stopPreview() {
+        cancelFade()
         musicPlayer.stop()
         spotifyService.stop()
         isPreviewing = false

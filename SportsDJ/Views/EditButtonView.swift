@@ -17,6 +17,8 @@ struct EditButtonView: View {
     @State private var songArtist: String = ""
     @State private var songArtwork: UIImage?
     @State private var showDeleteAlert = false
+    @State private var fadeOutEnabled: Bool = false
+    @State private var fadeOutDuration: Double = 2.0
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -44,6 +46,7 @@ struct EditButtonView: View {
                         songInfoCard
                         buttonNameCard
                         startPointCard
+                        fadeOutCard
                         categoriesCard
                         colorSelectionCard
                         deleteCard
@@ -276,6 +279,76 @@ struct EditButtonView: View {
         .cardStyle()
     }
     
+    // MARK: - Fade Out Card
+    
+    private var fadeOutCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Fade Out", systemImage: "speaker.wave.3.fill")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            // Toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Enable Fade Out")
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                    Text("Gradually lower volume when stopping")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Toggle("", isOn: $fadeOutEnabled)
+                    .labelsHidden()
+                    .tint(Color(hex: "#6366f1"))
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+            
+            // Duration selector (only show if enabled)
+            if fadeOutEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Duration")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                        Spacer()
+                        Text("\(String(format: "%.1f", fadeOutDuration))s")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color(hex: "#6366f1"))
+                    }
+                    
+                    HStack(spacing: 12) {
+                        ForEach([1.0, 1.5, 2.0, 3.0, 5.0], id: \.self) { duration in
+                            Button(action: { fadeOutDuration = duration }) {
+                                Text("\(String(format: "%.1f", duration))s")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(fadeOutDuration == duration ? .white : .gray)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        fadeOutDuration == duration ?
+                                        Color(hex: "#6366f1") :
+                                        Color.white.opacity(0.1)
+                                    )
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .cardStyle()
+        .animation(.spring(response: 0.3), value: fadeOutEnabled)
+    }
+    
     // MARK: - Categories Card
     
     private var categoriesCard: some View {
@@ -372,6 +445,8 @@ struct EditButtonView: View {
         startTime = button.startTimeSeconds
         selectedCategories = Set(button.categoryTags)
         selectedColor = button.colorHex
+        fadeOutEnabled = button.fadeOutEnabled
+        fadeOutDuration = button.fadeOutDuration
         
         if let duration = audioPlayer.getSongDuration(persistentID: button.songPersistentID) {
             songDuration = duration
@@ -421,6 +496,8 @@ struct EditButtonView: View {
         updatedButton.startTimeSeconds = startTime
         updatedButton.categoryTags = Array(selectedCategories)
         updatedButton.colorHex = selectedColor
+        updatedButton.fadeOutEnabled = fadeOutEnabled
+        updatedButton.fadeOutDuration = fadeOutDuration
         
         dataStore.updateButton(updatedButton)
         audioPlayer.stopPreview()

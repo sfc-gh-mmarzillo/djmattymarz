@@ -15,6 +15,8 @@ struct AddButtonView: View {
     @State private var selectedColor: String = "#6366f1"
     @State private var showingSongPicker = false
     @State private var songDuration: Double = 0
+    @State private var fadeOutEnabled: Bool = false
+    @State private var fadeOutDuration: Double = 2.0
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -44,6 +46,7 @@ struct AddButtonView: View {
                         if selectedSong != nil {
                             buttonNameCard
                             startPointCard
+                            fadeOutCard
                             categoriesCard
                             colorSelectionCard
                         }
@@ -290,6 +293,76 @@ struct AddButtonView: View {
         .cardStyle()
     }
     
+    // MARK: - Fade Out Card
+    
+    private var fadeOutCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Fade Out", systemImage: "speaker.wave.3.fill")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            // Toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Enable Fade Out")
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                    Text("Gradually lower volume when stopping")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Toggle("", isOn: $fadeOutEnabled)
+                    .labelsHidden()
+                    .tint(Color(hex: "#6366f1"))
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+            
+            // Duration selector (only show if enabled)
+            if fadeOutEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Duration")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                        Spacer()
+                        Text("\(String(format: "%.1f", fadeOutDuration))s")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color(hex: "#6366f1"))
+                    }
+                    
+                    HStack(spacing: 12) {
+                        ForEach([1.0, 1.5, 2.0, 3.0, 5.0], id: \.self) { duration in
+                            Button(action: { fadeOutDuration = duration }) {
+                                Text("\(String(format: "%.1f", duration))s")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(fadeOutDuration == duration ? .white : .gray)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        fadeOutDuration == duration ?
+                                        Color(hex: "#6366f1") :
+                                        Color.white.opacity(0.1)
+                                    )
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .cardStyle()
+        .animation(.spring(response: 0.3), value: fadeOutEnabled)
+    }
+    
     // MARK: - Categories Card
     
     private var categoriesCard: some View {
@@ -391,7 +464,9 @@ struct AddButtonView: View {
             startTimeSeconds: startTime,
             categoryTags: Array(selectedCategories),
             colorHex: selectedColor,
-            eventID: dataStore.selectedEventID
+            eventID: dataStore.selectedEventID,
+            fadeOutEnabled: fadeOutEnabled,
+            fadeOutDuration: fadeOutDuration
         )
         
         dataStore.addButton(button)
