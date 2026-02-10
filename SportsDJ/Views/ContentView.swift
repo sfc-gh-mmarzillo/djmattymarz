@@ -882,10 +882,16 @@ struct BattingOrderRow: View {
             
             // Playing indicator or edit button
             if isPlaying {
-                Image(systemName: "waveform")
-                    .font(.subheadline)
-                    .foregroundColor(Color(hex: "#22c55e"))
-                    .symbolEffect(.variableColor.iterative)
+                if #available(iOS 17.0, *) {
+                    Image(systemName: "waveform")
+                        .font(.subheadline)
+                        .foregroundColor(Color(hex: "#22c55e"))
+                        .symbolEffect(.variableColor.iterative)
+                } else {
+                    Image(systemName: "waveform")
+                        .font(.subheadline)
+                        .foregroundColor(Color(hex: "#22c55e"))
+                }
             }
             
             if isEditMode {

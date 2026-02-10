@@ -144,12 +144,7 @@ class SpeechService: NSObject, ObservableObject {
     // Map our 0-1 rate to AVSpeechUtterance's usable range
     private func mapRate(_ rate: Float) -> Float {
         // AVSpeechUtterance rate ranges from AVSpeechUtteranceMinimumSpeechRate to AVSpeechUtteranceMaximumSpeechRate
-        // But the middle values sound best. Map 0-1 to 0.3-0.6 range
-        let minRate: Float = AVSpeechUtteranceMinimumSpeechRate // ~0.0
-        let maxRate: Float = AVSpeechUtteranceMaximumSpeechRate // ~1.0
-        let defaultRate: Float = AVSpeechUtteranceDefaultSpeechRate // ~0.5
-        
-        // Use a comfortable range around default
+        // But the middle values sound best. Map 0-1 to a comfortable range around default
         let usableMin: Float = 0.35
         let usableMax: Float = 0.65
         

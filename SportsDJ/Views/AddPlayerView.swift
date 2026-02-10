@@ -366,7 +366,7 @@ struct AddPlayerView: View {
         )
         
         // Create player
-        var player = Player(
+        let player = Player(
             name: name,
             number: playerNumber,
             position: position.isEmpty ? nil : position,

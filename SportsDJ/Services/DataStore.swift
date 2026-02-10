@@ -248,7 +248,7 @@ class DataStore: ObservableObject {
     }
     
     private func reorderPlayersForCurrentEvent() {
-        var currentPlayers = filteredPlayers
+        let currentPlayers = filteredPlayers
         for (index, player) in currentPlayers.enumerated() {
             if let playerIndex = players.firstIndex(where: { $0.id == player.id }) {
                 players[playerIndex].lineupOrder = index
