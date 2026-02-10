@@ -19,6 +19,10 @@
 		A1000010 /* ManageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* ManageView.swift */; };
 		A1000011 /* SpotifyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000012 /* SpotifyService.swift */; };
 		A1000013 /* BulkImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000013 /* BulkImportView.swift */; };
+		A1000014 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000014 /* SpeechService.swift */; };
+		A1000015 /* LineupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015 /* LineupView.swift */; };
+		A1000016 /* AddPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016 /* AddPlayerView.swift */; };
+		A1000017 /* LineupOCRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017 /* LineupOCRView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +39,10 @@
 		A2000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000012 /* SpotifyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyService.swift; sourceTree = "<group>"; };
 		A2000013 /* BulkImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulkImportView.swift; sourceTree = "<group>"; };
+		A2000014 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
+		A2000015 /* LineupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineupView.swift; sourceTree = "<group>"; };
+		A2000016 /* AddPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPlayerView.swift; sourceTree = "<group>"; };
+		A2000017 /* LineupOCRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineupOCRView.swift; sourceTree = "<group>"; };
 		A3000000 /* SportsDJ.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SportsDJ.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -87,6 +95,9 @@
 				A2000009 /* EditButtonView.swift */,
 				A2000010 /* ManageView.swift */,
 				A2000013 /* BulkImportView.swift */,
+				A2000015 /* LineupView.swift */,
+				A2000016 /* AddPlayerView.swift */,
+				A2000017 /* LineupOCRView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -105,6 +116,7 @@
 				A2000005 /* AudioPlayerService.swift */,
 				A2000006 /* DataStore.swift */,
 				A2000012 /* SpotifyService.swift */,
+				A2000014 /* SpeechService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -189,6 +201,10 @@
 				A1000010 /* ManageView.swift in Sources */,
 				A1000011 /* SpotifyService.swift in Sources */,
 				A1000013 /* BulkImportView.swift in Sources */,
+				A1000014 /* SpeechService.swift in Sources */,
+				A1000015 /* LineupView.swift in Sources */,
+				A1000016 /* AddPlayerView.swift in Sources */,
+				A1000017 /* LineupOCRView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

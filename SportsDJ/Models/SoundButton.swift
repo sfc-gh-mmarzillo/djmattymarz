@@ -7,6 +7,18 @@ enum MusicSource: String, Codable {
     case spotify = "spotify"
 }
 
+// MARK: - Voice Over Settings
+struct VoiceOverSettings: Codable, Equatable {
+    var enabled: Bool = false
+    var text: String = ""
+    var voiceIdentifier: String? = nil // nil = default system voice
+    var rate: Float = 0.5  // 0.0-1.0, AVSpeechUtterance default is ~0.5
+    var pitch: Float = 1.0 // 0.5-2.0, default 1.0
+    var volume: Float = 1.0 // 0.0-1.0
+    var preDelay: Double = 0 // seconds before speaking
+    var postDelay: Double = 0.5 // seconds after speaking before song starts
+}
+
 // MARK: - Sound Button Model
 struct SoundButton: Identifiable, Codable {
     var id: UUID = UUID()
@@ -18,11 +30,13 @@ struct SoundButton: Identifiable, Codable {
     var categoryTags: [String]
     var colorHex: String
     var order: Int
-    var eventID: UUID?
+    var eventID: UUID? // Now references TeamEvent
     var fadeOutEnabled: Bool
     var fadeOutDuration: Double // in seconds
+    var voiceOver: VoiceOverSettings? // Optional voice announcement before song
+    var isVoiceOnly: Bool // For lineup announcements with no song
     
-    init(name: String, songPersistentID: UInt64, spotifyURI: String? = nil, musicSource: MusicSource = .appleMusic, startTimeSeconds: Double = 0, categoryTags: [String] = [], colorHex: String = "#007AFF", order: Int = 0, eventID: UUID? = nil, fadeOutEnabled: Bool = false, fadeOutDuration: Double = 2.0) {
+    init(name: String, songPersistentID: UInt64 = 0, spotifyURI: String? = nil, musicSource: MusicSource = .appleMusic, startTimeSeconds: Double = 0, categoryTags: [String] = [], colorHex: String = "#007AFF", order: Int = 0, eventID: UUID? = nil, fadeOutEnabled: Bool = false, fadeOutDuration: Double = 2.0, voiceOver: VoiceOverSettings? = nil, isVoiceOnly: Bool = false) {
         self.name = name
         self.songPersistentID = songPersistentID
         self.spotifyURI = spotifyURI
@@ -34,22 +48,59 @@ struct SoundButton: Identifiable, Codable {
         self.eventID = eventID
         self.fadeOutEnabled = fadeOutEnabled
         self.fadeOutDuration = fadeOutDuration
+        self.voiceOver = voiceOver
+        self.isVoiceOnly = isVoiceOnly
     }
 }
 
-// MARK: - Event Model
-struct Event: Identifiable, Codable, Hashable {
+// MARK: - Team/Event Model
+struct TeamEvent: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var date: Date?  // Optional - not all events need a date
     var colorHex: String
     var iconName: String
+    var order: Int
     
-    init(name: String, date: Date? = nil, colorHex: String = "#007AFF", iconName: String = "star.fill") {
+    init(name: String, date: Date? = nil, colorHex: String = "#007AFF", iconName: String = "star.fill", order: Int = 0) {
         self.name = name
         self.date = date
         self.colorHex = colorHex
         self.iconName = iconName
+        self.order = order
+    }
+}
+
+// MARK: - Legacy Event typealias (for migration compatibility)
+typealias Event = TeamEvent
+
+// MARK: - Player Model (for Lineups)
+struct Player: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var name: String
+    var number: Int
+    var position: String?
+    var lineupOrder: Int
+    var teamEventID: UUID
+    var announcementSoundID: UUID? // Reference to auto-generated voice sound
+    
+    init(name: String, number: Int, position: String? = nil, lineupOrder: Int = 0, teamEventID: UUID, announcementSoundID: UUID? = nil) {
+        self.name = name
+        self.number = number
+        self.position = position
+        self.lineupOrder = lineupOrder
+        self.teamEventID = teamEventID
+        self.announcementSoundID = announcementSoundID
+    }
+    
+    // Generate announcement text
+    var announcementText: String {
+        var text = "Next up, number \(number)"
+        if let pos = position, !pos.isEmpty {
+            text += ", \(pos)"
+        }
+        text += ", \(name)"
+        return text
     }
 }
 
@@ -60,12 +111,14 @@ struct Category: Identifiable, Codable, Hashable {
     var colorHex: String
     var eventID: UUID? // nil means global category (available in all events)
     var iconName: String
+    var order: Int
     
-    init(name: String, colorHex: String = "#007AFF", eventID: UUID? = nil, iconName: String = "tag.fill") {
+    init(name: String, colorHex: String = "#007AFF", eventID: UUID? = nil, iconName: String = "tag.fill", order: Int = 0) {
         self.name = name
         self.colorHex = colorHex
         self.eventID = eventID
         self.iconName = iconName
+        self.order = order
     }
     
     var isGlobal: Bool {

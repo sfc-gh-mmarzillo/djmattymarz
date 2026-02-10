@@ -10,9 +10,11 @@ struct ContentView: View {
     @State private var showingBulkImport = false
     @State private var editingButton: SoundButton?
     @State private var isEditMode = false
+    @State private var isReorderMode = false
+    @State private var showLineup = false
     
     var filteredButtons: [SoundButton] {
-        let eventFiltered = dataStore.filteredButtons
+        let eventFiltered = dataStore.filteredButtons.sorted { $0.order < $1.order }
         if selectedFilter == "All" {
             return eventFiltered
         }
@@ -60,9 +62,27 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { isEditMode.toggle() }) {
-                        Text(isEditMode ? "Done" : "Edit")
-                            .foregroundColor(.white)
+                    HStack(spacing: 12) {
+                        Button(action: { isEditMode.toggle() }) {
+                            Text(isEditMode ? "Done" : "Edit")
+                                .foregroundColor(.white)
+                        }
+                        
+                        if filteredButtons.count > 1 {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3)) {
+                                    isReorderMode.toggle()
+                                }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: isReorderMode ? "checkmark" : "arrow.up.arrow.down")
+                                        .font(.caption)
+                                    Text(isReorderMode ? "Done" : "Reorder")
+                                        .font(.subheadline)
+                                }
+                                .foregroundColor(isReorderMode ? Color(hex: "#22c55e") : Color(hex: "#6366f1"))
+                            }
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -71,11 +91,11 @@ struct ContentView: View {
                             Label("Add Sound Button", systemImage: "plus.circle")
                         }
                         Button(action: { showingBulkImport = true }) {
-                            Label("Bulk Import (up to 50)", systemImage: "square.stack.3d.up")
+                            Label("Bulk Import", systemImage: "square.stack.3d.up")
                         }
                         Divider()
                         Button(action: { showingManageView = true }) {
-                            Label("Manage Events & Categories", systemImage: "slider.horizontal.3")
+                            Label("Manage Teams & Categories", systemImage: "slider.horizontal.3")
                         }
                     } label: {
                         Image(systemName: "plus")
@@ -304,37 +324,184 @@ struct ContentView: View {
     
     var buttonGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 14) {
-                ForEach(filteredButtons) { button in
-                    ModernSoundButtonView(
-                        button: button,
-                        isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
-                        isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
-                        isEditMode: isEditMode
-                    )
-                    .onTapGesture {
-                        if isEditMode {
-                            editingButton = button
-                        } else {
-                            if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
-                                audioPlayer.stop()
-                            } else {
-                                audioPlayer.play(button: button)
+            VStack(spacing: 0) {
+                if isReorderMode {
+                    // Reorder list view
+                    reorderListView
+                } else {
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(filteredButtons) { button in
+                            ModernSoundButtonView(
+                                button: button,
+                                isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
+                                isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
+                                isEditMode: isEditMode
+                            )
+                            .onTapGesture {
+                                if isEditMode {
+                                    editingButton = button
+                                } else {
+                                    if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
+                                        audioPlayer.stop()
+                                    } else {
+                                        audioPlayer.play(button: button)
+                                    }
+                                }
+                            }
+                            .onLongPressGesture {
+                                editingButton = button
                             }
                         }
+                        
+                        // Add Sound Button in grid
+                        AddSoundGridButton {
+                            showingAddButton = true
+                        }
                     }
-                    .onLongPressGesture {
-                        editingButton = button
-                    }
-                }
-                
-                // Add Sound Button in grid
-                AddSoundGridButton {
-                    showingAddButton = true
+                    .padding(16)
+                    
+                    // Lineup Section
+                    lineupSection
                 }
             }
-            .padding(16)
         }
+    }
+    
+    // MARK: - Reorder List View
+    
+    var reorderListView: some View {
+        LazyVStack(spacing: 12) {
+            ForEach(Array(filteredButtons.enumerated()), id: \.element.id) { index, button in
+                HStack(spacing: 12) {
+                    // Button info
+                    HStack(spacing: 12) {
+                        Circle()
+                            .fill(Color(hex: button.colorHex))
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Image(systemName: button.iconName)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                            )
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(button.displayName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            
+                            if !button.categoryTags.isEmpty {
+                                Text(button.categoryTags.joined(separator: ", "))
+                                    .font(.caption2)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(1)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    
+                    // Reorder buttons
+                    VStack(spacing: 6) {
+                        Button(action: { moveButton(at: index, direction: -1) }) {
+                            Image(systemName: "chevron.up")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(index > 0 ? .white : .gray.opacity(0.3))
+                                .frame(width: 32, height: 24)
+                                .background(index > 0 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
+                                .cornerRadius(6)
+                        }
+                        .disabled(index == 0)
+                        
+                        Button(action: { moveButton(at: index, direction: 1) }) {
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(index < filteredButtons.count - 1 ? .white : .gray.opacity(0.3))
+                                .frame(width: 32, height: 24)
+                                .background(index < filteredButtons.count - 1 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
+                                .cornerRadius(6)
+                        }
+                        .disabled(index == filteredButtons.count - 1)
+                    }
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.08))
+                )
+            }
+        }
+        .padding(16)
+    }
+    
+    private func moveButton(at index: Int, direction: Int) {
+        let newIndex = index + direction
+        guard newIndex >= 0 && newIndex < filteredButtons.count else { return }
+        
+        // Get the actual buttons from the full list
+        let sourceButton = filteredButtons[index]
+        let destButton = filteredButtons[newIndex]
+        
+        // Find their indices in the main buttons array
+        guard let sourceIdx = dataStore.buttons.firstIndex(where: { $0.id == sourceButton.id }),
+              let destIdx = dataStore.buttons.firstIndex(where: { $0.id == destButton.id }) else { return }
+        
+        // Swap the order values
+        withAnimation(.spring(response: 0.3)) {
+            var btn1 = dataStore.buttons[sourceIdx]
+            var btn2 = dataStore.buttons[destIdx]
+            let tempOrder = btn1.order
+            btn1.order = btn2.order
+            btn2.order = tempOrder
+            dataStore.updateButton(btn1)
+            dataStore.updateButton(btn2)
+        }
+    }
+    
+    // MARK: - Lineup Section
+    
+    var lineupSection: some View {
+        VStack(spacing: 0) {
+            // Lineup toggle header
+            Button(action: { withAnimation(.spring(response: 0.3)) { showLineup.toggle() } }) {
+                HStack {
+                    Image(systemName: "person.3.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    
+                    Text("Lineup")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white)
+                    
+                    if !dataStore.filteredPlayers.isEmpty {
+                        Text("(\(dataStore.filteredPlayers.count))")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: showLineup ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.05))
+            }
+            
+            if showLineup {
+                LineupView()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.spring(response: 0.3), value: showLineup)
     }
     
     // MARK: - Now Playing Bar

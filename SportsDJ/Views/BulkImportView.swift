@@ -101,6 +101,7 @@ struct BulkImportView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
     
     // MARK: - Song Selection View
@@ -129,9 +130,21 @@ struct BulkImportView: View {
     private var selectionHeader: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedSongs.count) of \(maxSelection) selected")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
+                HStack(spacing: 4) {
+                    Text("\(selectedSongs.count)")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(Color(hex: "#6366f1"))
+                    Text("selected")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white)
+                    
+                    // Show limit hint only when near/at limit
+                    if selectedSongs.count >= maxSelection - 5 {
+                        Text("(max \(maxSelection))")
+                            .font(.caption2)
+                            .foregroundColor(selectedSongs.count >= maxSelection ? Color(hex: "#f43f5e") : .gray)
+                    }
+                }
                 
                 Text("Tap songs to select them for bulk import")
                     .font(.caption)
@@ -317,7 +330,8 @@ struct BulkImportView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
-            HStack(spacing: 10) {
+            // Use LazyVGrid for better portrait layout
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 40, maximum: 50))], spacing: 10) {
                 ForEach(colorOptions, id: \.self) { color in
                     Button(action: { selectedColor = color }) {
                         Circle()
@@ -337,7 +351,6 @@ struct BulkImportView: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white.opacity(0.06))
         )
-        .animation(.spring(response: 0.3), value: selectedColor)
     }
     
     private var startTimeCard: some View {

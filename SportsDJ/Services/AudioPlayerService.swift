@@ -14,9 +14,11 @@ class AudioPlayerService: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var currentMusicSource: MusicSource = .appleMusic
     @Published var isFadingOut: Bool = false
+    @Published var isSpeakingVoiceOver: Bool = false
     
     private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
     private let spotifyService = SpotifyService.shared
+    private let speechService = SpeechService.shared
     private var timer: Timer?
     private var fadeTimer: Timer?
     private var targetStartTime: Double = 0
@@ -25,8 +27,11 @@ class AudioPlayerService: ObservableObject {
     
     // Fade out properties
     private var currentButton: SoundButton?
-    private var originalVolume: Float = 1.0
+    private var initialVolume: Float = 1.0  // Volume when song started
     private var fadeStartVolume: Float = 1.0
+    
+    // Pending next button (for smooth transitions)
+    private var pendingButton: SoundButton?
     
     // Volume control - must be retained and added to view hierarchy
     private var volumeView: MPVolumeView?
@@ -134,13 +139,101 @@ class AudioPlayerService: ObservableObject {
     // MARK: - Play Button (Auto-detects source)
     
     func play(button: SoundButton) {
-        stop()
+        // If currently playing a song with fade out enabled, fade it out first then play new song
+        if let current = currentButton, current.fadeOutEnabled, isPlaying, !isFadingOut {
+            pendingButton = button
+            fadeOutAndStop(duration: current.fadeOutDuration)
+            return
+        }
+        
+        // If already fading, queue this button
+        if isFadingOut {
+            pendingButton = button
+            return
+        }
+        
+        stopImmediately()
+        
+        // Capture the initial system volume before playing
+        captureInitialVolume()
         
         currentButton = button
         currentButtonID = button.id
         nowPlayingTitle = button.name
         currentMusicSource = button.musicSource
         
+        // Check if this is a voice-only button (lineup announcement)
+        if button.isVoiceOnly {
+            playVoiceOnly(button: button)
+            return
+        }
+        
+        // Check if there's a voice over to play first
+        if let voiceOver = button.voiceOver, voiceOver.enabled, !voiceOver.text.isEmpty {
+            playWithVoiceOver(button: button, voiceOver: voiceOver)
+            return
+        }
+        
+        // No voice over, play directly
+        playMusic(button: button)
+    }
+    
+    private func captureInitialVolume() {
+        let audioSession = AVAudioSession.sharedInstance()
+        initialVolume = audioSession.outputVolume
+        print("Initial volume captured: \(initialVolume)")
+    }
+    
+    // MARK: - Voice Only Playback (for lineup announcements)
+    
+    private func playVoiceOnly(button: SoundButton) {
+        guard let voiceOver = button.voiceOver, voiceOver.enabled else {
+            // No voice settings, nothing to play
+            stopImmediately()
+            return
+        }
+        
+        isSpeakingVoiceOver = true
+        isPlaying = true
+        
+        speechService.speak(settings: voiceOver) { [weak self] in
+            DispatchQueue.main.async {
+                self?.isSpeakingVoiceOver = false
+                self?.isPlaying = false
+                self?.currentButtonID = nil
+                self?.nowPlayingTitle = ""
+            }
+        }
+    }
+    
+    // MARK: - Voice Over + Music Playback
+    
+    private func playWithVoiceOver(button: SoundButton, voiceOver: VoiceOverSettings) {
+        isSpeakingVoiceOver = true
+        isLoading = true
+        
+        speechService.speak(settings: voiceOver) { [weak self] in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                self.isSpeakingVoiceOver = false
+                
+                // Apply post-delay before starting music
+                let postDelay = voiceOver.postDelay
+                if postDelay > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + postDelay) {
+                        self.playMusic(button: button)
+                    }
+                } else {
+                    self.playMusic(button: button)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Music Playback (internal)
+    
+    private func playMusic(button: SoundButton) {
         switch button.musicSource {
         case .appleMusic:
             playAppleMusic(button: button)
@@ -250,6 +343,9 @@ class AudioPlayerService: ObservableObject {
         // Restore volume if it was changed
         restoreVolume()
         
+        // Stop speech service
+        speechService.stop()
+        
         // Stop both players to be safe
         musicPlayer.stop()
         spotifyService.stop()
@@ -257,6 +353,7 @@ class AudioPlayerService: ObservableObject {
         isPlaying = false
         isLoading = false
         isFadingOut = false
+        isSpeakingVoiceOver = false
         currentButtonID = nil
         currentButton = nil
         currentTime = 0
@@ -274,10 +371,9 @@ class AudioPlayerService: ObservableObject {
         
         isFadingOut = true
         
-        // Get current system volume
+        // Start fading from current system volume
         let audioSession = AVAudioSession.sharedInstance()
-        originalVolume = audioSession.outputVolume
-        fadeStartVolume = originalVolume
+        fadeStartVolume = audioSession.outputVolume
         
         let fadeSteps = 20
         let stepDuration = duration / Double(fadeSteps)
@@ -305,7 +401,7 @@ class AudioPlayerService: ObservableObject {
                     self.musicPlayer.stop()
                     self.spotifyService.stop()
                     
-                    // Restore original volume
+                    // Restore to initial volume (from when song started)
                     self.restoreVolume()
                     
                     self.isPlaying = false
@@ -319,6 +415,15 @@ class AudioPlayerService: ObservableObject {
                     self.targetStartTime = 0
                     self.hasSetStartTime = false
                     self.stopTimer()
+                    
+                    // Check if there's a pending button to play
+                    if let pending = self.pendingButton {
+                        self.pendingButton = nil
+                        // Small delay to ensure volume is restored before next song
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            self.play(button: pending)
+                        }
+                    }
                 }
             }
         }
@@ -334,9 +439,9 @@ class AudioPlayerService: ObservableObject {
     private func restoreVolume() {
         // Small delay to ensure music has stopped before restoring volume
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self = self, self.originalVolume > 0 else { return }
-            self.setSystemVolume(self.originalVolume)
-            print("Volume restored to: \(self.originalVolume)")
+            guard let self = self, self.initialVolume > 0 else { return }
+            self.setSystemVolume(self.initialVolume)
+            print("Volume restored to: \(self.initialVolume)")
         }
     }
     

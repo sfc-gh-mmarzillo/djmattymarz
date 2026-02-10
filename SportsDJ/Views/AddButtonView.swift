@@ -1,5 +1,6 @@
 import SwiftUI
 import MediaPlayer
+import AVFoundation
 
 struct AddButtonView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -17,6 +18,18 @@ struct AddButtonView: View {
     @State private var songDuration: Double = 0
     @State private var fadeOutEnabled: Bool = false
     @State private var fadeOutDuration: Double = 2.0
+    
+    // Voice over settings
+    @State private var voiceOverEnabled: Bool = false
+    @State private var voiceOverText: String = ""
+    @State private var voiceOverRate: Float = 0.5
+    @State private var voiceOverPitch: Float = 1.0
+    @State private var voiceOverVolume: Float = 1.0
+    @State private var voiceOverPreDelay: Double = 0
+    @State private var voiceOverPostDelay: Double = 0.5
+    @State private var selectedVoiceID: String? = nil
+    
+    private let speechService = SpeechService.shared
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -47,6 +60,7 @@ struct AddButtonView: View {
                             buttonNameCard
                             startPointCard
                             fadeOutCard
+                            voiceOverCard
                             categoriesCard
                             colorSelectionCard
                         }
@@ -210,33 +224,50 @@ struct AddButtonView: View {
                     
                     Spacer()
                     
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Duration")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                        Text(formatTime(songDuration))
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .monospacedDigit()
+                    // Show current playback position when previewing
+                    if audioPlayer.isPreviewing {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Playing")
+                                .font(.caption2)
+                                .foregroundColor(Color(hex: "#6366f1"))
+                            Text(formatTime(audioPlayer.currentTime))
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Color(hex: "#6366f1"))
+                                .monospacedDigit()
+                        }
+                    } else {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Duration")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                            Text(formatTime(songDuration))
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .monospacedDigit()
+                        }
                     }
                 }
                 
-                // Slider with gradient track
+                // Progress bar - shows current position during preview, start position otherwise
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.white.opacity(0.1))
                         .frame(height: 6)
                     
                     GeometryReader { geo in
+                        let displayPosition = audioPlayer.isPreviewing ? audioPlayer.currentTime : startTime
                         RoundedRectangle(cornerRadius: 3)
                             .fill(
                                 LinearGradient(
-                                    colors: [Color(hex: "#6366f1"), Color(hex: "#ec4899")],
+                                    colors: audioPlayer.isPreviewing ? 
+                                        [Color(hex: "#22c55e"), Color(hex: "#14b8a6")] :
+                                        [Color(hex: "#6366f1"), Color(hex: "#ec4899")],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: geo.size.width * (songDuration > 0 ? startTime / songDuration : 0), height: 6)
+                            .frame(width: geo.size.width * (songDuration > 0 ? displayPosition / songDuration : 0), height: 6)
+                            .animation(.linear(duration: 0.1), value: displayPosition)
                     }
                     .frame(height: 6)
                 }
@@ -364,6 +395,187 @@ struct AddButtonView: View {
         .animation(.spring(response: 0.3), value: fadeOutEnabled)
     }
     
+    // MARK: - Voice Over Card (Compact)
+    
+    private var voiceOverCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Voice Announcement", systemImage: "speaker.wave.2.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            // Toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable Voice Over")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Text("Speak text before playing song")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Toggle("", isOn: $voiceOverEnabled)
+                    .labelsHidden()
+                    .tint(Color(hex: "#6366f1"))
+                    .scaleEffect(0.85)
+            }
+            .padding(10)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(10)
+            
+            if voiceOverEnabled {
+                // Text input
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Announcement Text")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    TextField("e.g., Now batting, number 23...", text: $voiceOverText)
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .padding(10)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(8)
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(10)
+                
+                // Voice settings
+                VStack(spacing: 8) {
+                    // Rate slider
+                    HStack {
+                        Text("Speed")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .frame(width: 50, alignment: .leading)
+                        Slider(value: $voiceOverRate, in: 0...1)
+                            .tint(Color(hex: "#6366f1"))
+                        Text(voiceOverRate < 0.4 ? "Slow" : voiceOverRate > 0.6 ? "Fast" : "Normal")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                            .frame(width: 45)
+                    }
+                    
+                    // Pitch slider
+                    HStack {
+                        Text("Pitch")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .frame(width: 50, alignment: .leading)
+                        Slider(value: $voiceOverPitch, in: 0.5...2.0)
+                            .tint(Color(hex: "#6366f1"))
+                        Text(String(format: "%.1f", voiceOverPitch))
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                            .frame(width: 45)
+                    }
+                    
+                    // Volume slider
+                    HStack {
+                        Text("Volume")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .frame(width: 50, alignment: .leading)
+                        Slider(value: $voiceOverVolume, in: 0...1)
+                            .tint(Color(hex: "#6366f1"))
+                        Text("\(Int(voiceOverVolume * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                            .frame(width: 45)
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(10)
+                
+                // Delays
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Pre-delay")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                        HStack(spacing: 4) {
+                            ForEach([0.0, 0.5, 1.0, 2.0], id: \.self) { delay in
+                                Button(action: { voiceOverPreDelay = delay }) {
+                                    Text("\(String(format: "%.1f", delay))s")
+                                        .font(.caption2)
+                                        .foregroundColor(voiceOverPreDelay == delay ? .white : .gray)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            voiceOverPreDelay == delay ?
+                                            Color(hex: "#6366f1") :
+                                            Color.white.opacity(0.1)
+                                        )
+                                        .cornerRadius(4)
+                                }
+                            }
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Post-delay")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                        HStack(spacing: 4) {
+                            ForEach([0.0, 0.5, 1.0, 2.0], id: \.self) { delay in
+                                Button(action: { voiceOverPostDelay = delay }) {
+                                    Text("\(String(format: "%.1f", delay))s")
+                                        .font(.caption2)
+                                        .foregroundColor(voiceOverPostDelay == delay ? .white : .gray)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            voiceOverPostDelay == delay ?
+                                            Color(hex: "#6366f1") :
+                                            Color.white.opacity(0.1)
+                                        )
+                                        .cornerRadius(4)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(10)
+                
+                // Preview button
+                Button(action: previewVoiceOver) {
+                    HStack {
+                        Image(systemName: "play.fill")
+                            .font(.caption)
+                        Text("Preview Voice")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "#6366f1"))
+                    .cornerRadius(8)
+                }
+                .disabled(voiceOverText.isEmpty)
+                .opacity(voiceOverText.isEmpty ? 0.5 : 1)
+            }
+        }
+        .compactCardStyle()
+        .animation(.spring(response: 0.3), value: voiceOverEnabled)
+    }
+    
+    private func previewVoiceOver() {
+        let settings = VoiceOverSettings(
+            enabled: true,
+            text: voiceOverText,
+            voiceIdentifier: selectedVoiceID,
+            rate: voiceOverRate,
+            pitch: voiceOverPitch,
+            volume: voiceOverVolume,
+            preDelay: 0,
+            postDelay: 0
+        )
+        speechService.previewVoice(text: voiceOverText, settings: settings)
+    }
+    
     // MARK: - Categories Card (Compact)
     
     private var categoriesCard: some View {
@@ -462,6 +674,21 @@ struct AddButtonView: View {
     func saveButton() {
         guard let song = selectedSong else { return }
         
+        // Create voice over settings if enabled
+        var voiceOver: VoiceOverSettings? = nil
+        if voiceOverEnabled && !voiceOverText.isEmpty {
+            voiceOver = VoiceOverSettings(
+                enabled: true,
+                text: voiceOverText,
+                voiceIdentifier: selectedVoiceID,
+                rate: voiceOverRate,
+                pitch: voiceOverPitch,
+                volume: voiceOverVolume,
+                preDelay: voiceOverPreDelay,
+                postDelay: voiceOverPostDelay
+            )
+        }
+        
         let button = SoundButton(
             name: buttonName,
             songPersistentID: song.persistentID,
@@ -471,7 +698,9 @@ struct AddButtonView: View {
             colorHex: selectedColor,
             eventID: dataStore.selectedEventID,
             fadeOutEnabled: fadeOutEnabled,
-            fadeOutDuration: fadeOutDuration
+            fadeOutDuration: fadeOutDuration,
+            voiceOver: voiceOver,
+            isVoiceOnly: false
         )
         
         dataStore.addButton(button)

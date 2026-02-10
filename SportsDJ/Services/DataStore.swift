@@ -14,35 +14,43 @@ struct DefaultSongSettings: Codable {
 class DataStore: ObservableObject {
     @Published var buttons: [SoundButton] = []
     @Published var categories: [Category] = []
-    @Published var events: [Event] = []
+    @Published var teamEvents: [TeamEvent] = []
+    @Published var players: [Player] = []
     @Published var selectedEventID: UUID?
     @Published var defaultSettings: DefaultSongSettings = DefaultSongSettings()
     
     private let buttonsKey = "soundButtons"
     private let categoriesKey = "categories"
     private let eventsKey = "events"
+    private let playersKey = "players"
     private let selectedEventKey = "selectedEvent"
     private let defaultSettingsKey = "defaultSongSettings"
+    
+    // Legacy compatibility - expose as 'events' for existing code
+    var events: [TeamEvent] {
+        get { teamEvents }
+        set { teamEvents = newValue }
+    }
     
     init() {
         loadData()
         migrateDataIfNeeded()
         
-        // Create default event for new users
-        if events.isEmpty {
-            let defaultEvent = Event(
-                name: "My First Event",
+        // Create default team/event for new users
+        if teamEvents.isEmpty {
+            let defaultEvent = TeamEvent(
+                name: "My First Team",
                 date: nil,
                 colorHex: "#6366f1",
-                iconName: "star.fill"
+                iconName: "sportscourt.fill"
             )
-            events.append(defaultEvent)
+            teamEvents.append(defaultEvent)
             saveEvents()
         }
         
-        // Always ensure an event is selected
-        if selectedEventID == nil && !events.isEmpty {
-            selectedEventID = events.first?.id
+        // Always ensure a team/event is selected
+        if selectedEventID == nil && !teamEvents.isEmpty {
+            selectedEventID = teamEvents.first?.id
             UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
         }
         
@@ -70,6 +78,11 @@ class DataStore: ObservableObject {
         buttons.filter { button in
             button.eventID == nil || button.eventID == selectedEventID
         }
+    }
+    
+    var filteredPlayers: [Player] {
+        guard let eventID = selectedEventID else { return [] }
+        return players.filter { $0.teamEventID == eventID }.sorted { $0.lineupOrder < $1.lineupOrder }
     }
     
     // MARK: - Button Methods
@@ -125,47 +138,175 @@ class DataStore: ObservableObject {
         saveButtons()
     }
     
-    // MARK: - Event Methods
+    func moveCategory(from source: IndexSet, to destination: Int) {
+        categories.move(fromOffsets: source, toOffset: destination)
+        for i in categories.indices {
+            categories[i].order = i
+        }
+        saveCategories()
+    }
     
-    func addEvent(_ event: Event) {
-        events.append(event)
+    // MARK: - Team/Event Methods
+    
+    func addEvent(_ event: TeamEvent) {
+        teamEvents.append(event)
         saveEvents()
     }
     
-    func updateEvent(_ event: Event) {
-        if let index = events.firstIndex(where: { $0.id == event.id }) {
-            events[index] = event
+    func updateEvent(_ event: TeamEvent) {
+        if let index = teamEvents.firstIndex(where: { $0.id == event.id }) {
+            teamEvents[index] = event
             saveEvents()
         }
     }
     
-    func deleteEvent(_ event: Event) {
-        // Prevent deleting the last event
-        guard events.count > 1 else { return }
+    func deleteEvent(_ event: TeamEvent) {
+        // Prevent deleting the last team/event
+        guard teamEvents.count > 1 else { return }
         
-        // Delete all categories specific to this event
+        // Delete all categories specific to this team/event
         categories.removeAll { $0.eventID == event.id }
         
-        // Delete all buttons specific to this event
+        // Delete all buttons specific to this team/event
         buttons.removeAll { $0.eventID == event.id }
         
-        // Remove the event
-        events.removeAll { $0.id == event.id }
+        // Delete all players in this team/event
+        players.removeAll { $0.teamEventID == event.id }
         
-        // Auto-select another event if deleted event was selected
+        // Remove the team/event
+        teamEvents.removeAll { $0.id == event.id }
+        
+        // Auto-select another team/event if deleted one was selected
         if selectedEventID == event.id {
-            selectedEventID = events.first?.id
+            selectedEventID = teamEvents.first?.id
             UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
         }
         
         saveEvents()
         saveCategories()
         saveButtons()
+        savePlayers()
     }
     
-    func selectEvent(_ event: Event?) {
+    func selectEvent(_ event: TeamEvent?) {
         selectedEventID = event?.id
         UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
+    }
+    
+    func moveEvent(from source: IndexSet, to destination: Int) {
+        teamEvents.move(fromOffsets: source, toOffset: destination)
+        for i in teamEvents.indices {
+            teamEvents[i].order = i
+        }
+        saveEvents()
+    }
+    
+    // MARK: - Player/Lineup Methods
+    
+    func addPlayer(_ player: Player) -> Player {
+        var newPlayer = player
+        newPlayer.lineupOrder = filteredPlayers.count
+        players.append(newPlayer)
+        savePlayers()
+        return newPlayer
+    }
+    
+    func updatePlayer(_ player: Player) {
+        if let index = players.firstIndex(where: { $0.id == player.id }) {
+            players[index] = player
+            savePlayers()
+        }
+    }
+    
+    func deletePlayer(_ player: Player) {
+        // Also delete the associated announcement sound if exists
+        if let soundID = player.announcementSoundID {
+            buttons.removeAll { $0.id == soundID }
+            saveButtons()
+        }
+        players.removeAll { $0.id == player.id }
+        
+        // Reorder remaining players
+        reorderPlayersForCurrentEvent()
+        savePlayers()
+    }
+    
+    func movePlayer(from source: IndexSet, to destination: Int) {
+        var currentPlayers = filteredPlayers
+        currentPlayers.move(fromOffsets: source, toOffset: destination)
+        
+        // Update lineup order
+        for (index, player) in currentPlayers.enumerated() {
+            if let playerIndex = players.firstIndex(where: { $0.id == player.id }) {
+                players[playerIndex].lineupOrder = index
+            }
+        }
+        savePlayers()
+    }
+    
+    private func reorderPlayersForCurrentEvent() {
+        var currentPlayers = filteredPlayers
+        for (index, player) in currentPlayers.enumerated() {
+            if let playerIndex = players.firstIndex(where: { $0.id == player.id }) {
+                players[playerIndex].lineupOrder = index
+            }
+        }
+    }
+    
+    // Create announcement sound for a player
+    func createAnnouncementSound(for player: Player, voiceSettings: VoiceOverSettings? = nil) -> SoundButton {
+        let settings = voiceSettings ?? VoiceOverSettings(
+            enabled: true,
+            text: player.announcementText,
+            voiceIdentifier: nil,
+            rate: 0.5,
+            pitch: 1.0,
+            volume: 1.0,
+            preDelay: 0,
+            postDelay: 0
+        )
+        
+        // Ensure text is set correctly
+        var finalSettings = settings
+        if finalSettings.text.isEmpty {
+            finalSettings.text = player.announcementText
+        }
+        
+        let sound = SoundButton(
+            name: "📢 \(player.name)",
+            songPersistentID: 0,
+            spotifyURI: nil,
+            musicSource: .appleMusic,
+            startTimeSeconds: 0,
+            categoryTags: ["Lineup"],
+            colorHex: "#22c55e",
+            order: buttons.count,
+            eventID: player.teamEventID,
+            fadeOutEnabled: false,
+            fadeOutDuration: 0,
+            voiceOver: finalSettings,
+            isVoiceOnly: true
+        )
+        
+        return sound
+    }
+    
+    // Add player with auto-generated announcement
+    func addPlayerWithAnnouncement(_ player: Player, voiceSettings: VoiceOverSettings? = nil) -> Player {
+        var newPlayer = player
+        newPlayer.lineupOrder = filteredPlayers.count
+        
+        // Create and add announcement sound
+        let sound = createAnnouncementSound(for: newPlayer, voiceSettings: voiceSettings)
+        buttons.append(sound)
+        saveButtons()
+        
+        // Link player to sound
+        newPlayer.announcementSoundID = sound.id
+        players.append(newPlayer)
+        savePlayers()
+        
+        return newPlayer
     }
     
     // MARK: - Default Settings Methods
@@ -190,8 +331,14 @@ class DataStore: ObservableObject {
     }
     
     private func saveEvents() {
-        if let encoded = try? JSONEncoder().encode(events) {
+        if let encoded = try? JSONEncoder().encode(teamEvents) {
             UserDefaults.standard.set(encoded, forKey: eventsKey)
+        }
+    }
+    
+    private func savePlayers() {
+        if let encoded = try? JSONEncoder().encode(players) {
+            UserDefaults.standard.set(encoded, forKey: playersKey)
         }
     }
     
@@ -213,8 +360,13 @@ class DataStore: ObservableObject {
         }
         
         if let data = UserDefaults.standard.data(forKey: eventsKey),
-           let decoded = try? JSONDecoder().decode([Event].self, from: data) {
-            events = decoded
+           let decoded = try? JSONDecoder().decode([TeamEvent].self, from: data) {
+            teamEvents = decoded
+        }
+        
+        if let data = UserDefaults.standard.data(forKey: playersKey),
+           let decoded = try? JSONDecoder().decode([Player].self, from: data) {
+            players = decoded
         }
         
         if let eventIDString = UserDefaults.standard.string(forKey: selectedEventKey) {
@@ -230,11 +382,11 @@ class DataStore: ObservableObject {
     // MARK: - Migration for existing data
     
     private func migrateDataIfNeeded() {
-        // Migrate buttons that don't have musicSource
         var needsSave = false
+        
+        // Migrate buttons that don't have the new fields
         for i in buttons.indices {
             if buttons[i].spotifyURI == nil && buttons[i].musicSource != .appleMusic {
-                // This shouldn't happen but handle gracefully
                 needsSave = true
             }
         }
@@ -250,6 +402,12 @@ class DataStore: ObservableObject {
                 )
                 needsSave = true
             }
+        }
+        
+        // Ensure "Lineup" category exists
+        if !categories.contains(where: { $0.name == "Lineup" }) {
+            categories.append(Category(name: "Lineup", colorHex: "#22c55e", iconName: "person.3.fill"))
+            needsSave = true
         }
         
         if needsSave {

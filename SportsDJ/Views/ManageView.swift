@@ -7,7 +7,7 @@ struct ManageView: View {
     @State private var selectedTab: ManageTab = .events
     
     enum ManageTab: String, CaseIterable {
-        case events = "Events"
+        case events = "Teams/Events"
         case categories = "Categories"
         case settings = "Settings"
     }
@@ -65,7 +65,7 @@ struct ManageView: View {
                 }) {
                     VStack(spacing: 8) {
                         HStack(spacing: 6) {
-                            Image(systemName: tab == .events ? "calendar.badge.clock" : "tag.fill")
+                            Image(systemName: iconForTab(tab))
                                 .font(.subheadline)
                             Text(tab.rawValue)
                                 .font(.subheadline)
@@ -85,6 +85,14 @@ struct ManageView: View {
         }
         .background(Color(hex: "#1a1a2e").opacity(0.8))
     }
+    
+    private func iconForTab(_ tab: ManageTab) -> String {
+        switch tab {
+        case .events: return "person.3.fill"
+        case .categories: return "tag.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
 }
 
 // MARK: - Events List View
@@ -97,6 +105,7 @@ struct EventsListView: View {
     @State private var newEventIcon = "star.fill"
     @State private var newEventDate = Date()
     @State private var includeDateInEvent = false
+    @State private var isReordering = false
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -113,15 +122,56 @@ struct EventsListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                // Add Event Card
-                addEventCard
+                // Reorder toggle when multiple events exist
+                if dataStore.events.count > 1 {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3)) {
+                                isReordering.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: isReordering ? "checkmark" : "arrow.up.arrow.down")
+                                    .font(.caption)
+                                Text(isReordering ? "Done" : "Reorder")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(isReordering ? Color(hex: "#22c55e") : Color(hex: "#6366f1"))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(isReordering ? Color(hex: "#22c55e").opacity(0.2) : Color(hex: "#6366f1").opacity(0.2))
+                            )
+                        }
+                    }
+                }
+                
+                // Add Event Card (hide when reordering)
+                if !isReordering {
+                    addEventCard
+                }
                 
                 // Events List
                 if dataStore.events.isEmpty {
                     emptyEventsState
                 } else {
-                    ForEach(dataStore.events) { event in
-                        EventCard(event: event)
+                    let sortedEvents = dataStore.events.sorted { $0.order < $1.order }
+                    ForEach(Array(sortedEvents.enumerated()), id: \.element.id) { index, event in
+                        EventCard(
+                            event: event,
+                            isReordering: isReordering,
+                            index: index,
+                            totalCount: sortedEvents.count,
+                            onMoveUp: {
+                                moveEvent(at: index, direction: -1)
+                            },
+                            onMoveDown: {
+                                moveEvent(at: index, direction: 1)
+                            }
+                        )
                     }
                 }
             }
@@ -130,13 +180,27 @@ struct EventsListView: View {
         .background(Color.clear)
     }
     
+    private func moveEvent(at index: Int, direction: Int) {
+        let sortedEvents = dataStore.events.sorted { $0.order < $1.order }
+        let newIndex = index + direction
+        guard newIndex >= 0 && newIndex < sortedEvents.count else { return }
+        
+        // Create IndexSet for the source and calculate destination
+        let source = IndexSet(integer: index)
+        let destination = direction > 0 ? newIndex + 1 : newIndex
+        
+        withAnimation(.spring(response: 0.3)) {
+            dataStore.moveEvent(from: source, to: destination)
+        }
+    }
+    
     private var addEventCard: some View {
         VStack(spacing: 16) {
             HStack {
                 Image(systemName: "plus.circle.fill")
                     .font(.title2)
                     .foregroundColor(Color(hex: "#6366f1"))
-                Text("Create New Event")
+                Text("Create New Team/Event")
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
@@ -155,7 +219,7 @@ struct EventsListView: View {
                     HStack {
                         Image(systemName: "pencil")
                             .foregroundColor(.gray)
-                        TextField("Event name", text: $newEventName)
+                        TextField("Team or event name", text: $newEventName)
                             .foregroundColor(.white)
                     }
                     .padding()
@@ -302,14 +366,14 @@ struct EventsListView: View {
     
     private var emptyEventsState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "calendar.badge.plus")
+            Image(systemName: "person.3.fill")
                 .font(.system(size: 50))
                 .foregroundColor(.gray)
-            Text("No Events Yet")
+            Text("No Teams or Events Yet")
                 .font(.title3)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
-            Text("Create your first event to organize\nyour sound buttons by occasion")
+            Text("Create your first team or event to organize\nyour sounds, categories, and lineup")
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -340,6 +404,12 @@ struct EventsListView: View {
 struct EventCard: View {
     @EnvironmentObject var dataStore: DataStore
     let event: Event
+    var isReordering: Bool = false
+    var index: Int = 0
+    var totalCount: Int = 1
+    var onMoveUp: (() -> Void)? = nil
+    var onMoveDown: (() -> Void)? = nil
+    
     @State private var showingDeleteAlert = false
     @State private var showingLastEventAlert = false
     
@@ -394,23 +464,48 @@ struct EventCard: View {
             
             Spacer()
             
-            // Selected indicator
-            if dataStore.selectedEventID == event.id {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(Color(hex: "#22c55e"))
-                    .font(.title3)
-            }
-            
-            // Delete button (disabled for last event)
-            Button(action: {
-                if isLastEvent {
-                    showingLastEventAlert = true
-                } else {
-                    showingDeleteAlert = true
+            if isReordering {
+                // Reorder buttons
+                VStack(spacing: 8) {
+                    Button(action: { onMoveUp?() }) {
+                        Image(systemName: "chevron.up")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(index > 0 ? .white : .gray.opacity(0.3))
+                            .frame(width: 32, height: 24)
+                            .background(index > 0 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .disabled(index == 0)
+                    
+                    Button(action: { onMoveDown?() }) {
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(index < totalCount - 1 ? .white : .gray.opacity(0.3))
+                            .frame(width: 32, height: 24)
+                            .background(index < totalCount - 1 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .disabled(index == totalCount - 1)
                 }
-            }) {
-                Image(systemName: "trash")
-                    .foregroundColor(isLastEvent ? .gray.opacity(0.4) : .red.opacity(0.8))
+            } else {
+                // Selected indicator
+                if dataStore.selectedEventID == event.id {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color(hex: "#22c55e"))
+                        .font(.title3)
+                }
+                
+                // Delete button (disabled for last event)
+                Button(action: {
+                    if isLastEvent {
+                        showingLastEventAlert = true
+                    } else {
+                        showingDeleteAlert = true
+                    }
+                }) {
+                    Image(systemName: "trash")
+                        .foregroundColor(isLastEvent ? .gray.opacity(0.4) : .red.opacity(0.8))
+                }
             }
         }
         .padding(16)
@@ -458,6 +553,7 @@ struct CategoriesListView: View {
     @State private var newCategoryColor = "#6366f1"
     @State private var newCategoryIcon = "tag.fill"
     @State private var isGlobalCategory = true
+    @State private var isReordering = false
     
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -472,25 +568,61 @@ struct CategoriesListView: View {
     ]
     
     var globalCategories: [Category] {
-        dataStore.categories.filter { $0.isGlobal }
+        dataStore.categories.filter { $0.isGlobal }.sorted { $0.order < $1.order }
     }
     
     var eventCategories: [Category] {
         guard let eventID = dataStore.selectedEventID else { return [] }
-        return dataStore.categories.filter { $0.eventID == eventID }
+        return dataStore.categories.filter { $0.eventID == eventID }.sorted { $0.order < $1.order }
     }
     
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                // Add Category Card
-                addCategoryCard
+                // Reorder toggle when categories exist
+                if !dataStore.categories.isEmpty {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3)) {
+                                isReordering.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: isReordering ? "checkmark" : "arrow.up.arrow.down")
+                                    .font(.caption)
+                                Text(isReordering ? "Done" : "Reorder")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(isReordering ? Color(hex: "#22c55e") : Color(hex: "#6366f1"))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(isReordering ? Color(hex: "#22c55e").opacity(0.2) : Color(hex: "#6366f1").opacity(0.2))
+                            )
+                        }
+                    }
+                }
+                
+                // Add Category Card (hide when reordering)
+                if !isReordering {
+                    addCategoryCard
+                }
                 
                 // Global Categories Section
                 if !globalCategories.isEmpty {
                     sectionHeader("Global Categories", icon: "globe")
-                    ForEach(globalCategories) { category in
-                        CategoryCard(category: category)
+                    ForEach(Array(globalCategories.enumerated()), id: \.element.id) { index, category in
+                        CategoryCard(
+                            category: category,
+                            isReordering: isReordering,
+                            index: index,
+                            totalCount: globalCategories.count,
+                            onMoveUp: { moveCategoryInList(globalCategories, at: index, direction: -1) },
+                            onMoveDown: { moveCategoryInList(globalCategories, at: index, direction: 1) }
+                        )
                     }
                 }
                 
@@ -503,8 +635,15 @@ struct CategoriesListView: View {
                             .foregroundColor(.gray)
                             .padding()
                     } else {
-                        ForEach(eventCategories) { category in
-                            CategoryCard(category: category)
+                        ForEach(Array(eventCategories.enumerated()), id: \.element.id) { index, category in
+                            CategoryCard(
+                                category: category,
+                                isReordering: isReordering,
+                                index: index,
+                                totalCount: eventCategories.count,
+                                onMoveUp: { moveCategoryInList(eventCategories, at: index, direction: -1) },
+                                onMoveDown: { moveCategoryInList(eventCategories, at: index, direction: 1) }
+                            )
                         }
                     }
                 }
@@ -516,6 +655,26 @@ struct CategoriesListView: View {
             .padding()
         }
         .background(Color.clear)
+    }
+    
+    private func moveCategoryInList(_ list: [Category], at index: Int, direction: Int) {
+        let newIndex = index + direction
+        guard newIndex >= 0 && newIndex < list.count else { return }
+        
+        // Get the indices in the main categories array
+        guard let sourceIdx = dataStore.categories.firstIndex(where: { $0.id == list[index].id }),
+              let destIdx = dataStore.categories.firstIndex(where: { $0.id == list[newIndex].id }) else { return }
+        
+        // Swap the order values
+        withAnimation(.spring(response: 0.3)) {
+            var cat1 = dataStore.categories[sourceIdx]
+            var cat2 = dataStore.categories[destIdx]
+            let tempOrder = cat1.order
+            cat1.order = cat2.order
+            cat2.order = tempOrder
+            dataStore.updateCategory(cat1)
+            dataStore.updateCategory(cat2)
+        }
     }
     
     private func sectionHeader(_ title: String, icon: String) -> some View {
@@ -729,6 +888,12 @@ struct CategoriesListView: View {
 struct CategoryCard: View {
     @EnvironmentObject var dataStore: DataStore
     let category: Category
+    var isReordering: Bool = false
+    var index: Int = 0
+    var totalCount: Int = 1
+    var onMoveUp: (() -> Void)? = nil
+    var onMoveDown: (() -> Void)? = nil
+    
     @State private var showingDeleteAlert = false
     
     var buttonCount: Int {
@@ -763,10 +928,35 @@ struct CategoryCard: View {
             
             Spacer()
             
-            // Delete button
-            Button(action: { showingDeleteAlert = true }) {
-                Image(systemName: "trash")
-                    .foregroundColor(.red.opacity(0.8))
+            if isReordering {
+                // Reorder buttons
+                VStack(spacing: 8) {
+                    Button(action: { onMoveUp?() }) {
+                        Image(systemName: "chevron.up")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(index > 0 ? .white : .gray.opacity(0.3))
+                            .frame(width: 32, height: 24)
+                            .background(index > 0 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .disabled(index == 0)
+                    
+                    Button(action: { onMoveDown?() }) {
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(index < totalCount - 1 ? .white : .gray.opacity(0.3))
+                            .frame(width: 32, height: 24)
+                            .background(index < totalCount - 1 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .disabled(index == totalCount - 1)
+                }
+            } else {
+                // Delete button
+                Button(action: { showingDeleteAlert = true }) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red.opacity(0.8))
+                }
             }
         }
         .padding(16)

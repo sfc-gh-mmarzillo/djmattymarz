@@ -20,6 +20,18 @@ struct EditButtonView: View {
     @State private var fadeOutEnabled: Bool = false
     @State private var fadeOutDuration: Double = 2.0
     
+    // Voice over settings
+    @State private var voiceOverEnabled: Bool = false
+    @State private var voiceOverText: String = ""
+    @State private var voiceOverRate: Float = 0.5
+    @State private var voiceOverPitch: Float = 1.0
+    @State private var voiceOverVolume: Float = 1.0
+    @State private var voiceOverPreDelay: Double = 0
+    @State private var voiceOverPostDelay: Double = 0.5
+    @State private var selectedVoiceID: String? = nil
+    
+    @StateObject private var speechService = SpeechService.shared
+    
     let colorOptions = [
         "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
         "#f97316", "#eab308", "#22c55e", "#14b8a6",
@@ -47,6 +59,7 @@ struct EditButtonView: View {
                         buttonNameCard
                         startPointCard
                         fadeOutCard
+                        voiceOverCard
                         categoriesCard
                         colorSelectionCard
                         deleteCard
@@ -195,33 +208,50 @@ struct EditButtonView: View {
                     
                     Spacer()
                     
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Duration")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                        Text(formatTime(songDuration))
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .monospacedDigit()
+                    // Show current playback position when previewing
+                    if audioPlayer.isPreviewing {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Playing")
+                                .font(.caption2)
+                                .foregroundColor(Color(hex: "#6366f1"))
+                            Text(formatTime(audioPlayer.currentTime))
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Color(hex: "#6366f1"))
+                                .monospacedDigit()
+                        }
+                    } else {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Duration")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                            Text(formatTime(songDuration))
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .monospacedDigit()
+                        }
                     }
                 }
                 
-                // Progress visualization
+                // Progress bar - shows current position during preview, start position otherwise
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.white.opacity(0.1))
                         .frame(height: 6)
                     
                     GeometryReader { geo in
+                        let displayPosition = audioPlayer.isPreviewing ? audioPlayer.currentTime : startTime
                         RoundedRectangle(cornerRadius: 3)
                             .fill(
                                 LinearGradient(
-                                    colors: [Color(hex: "#6366f1"), Color(hex: "#ec4899")],
+                                    colors: audioPlayer.isPreviewing ? 
+                                        [Color(hex: "#22c55e"), Color(hex: "#14b8a6")] :
+                                        [Color(hex: "#6366f1"), Color(hex: "#ec4899")],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: geo.size.width * (songDuration > 0 ? startTime / songDuration : 0), height: 6)
+                            .frame(width: geo.size.width * (songDuration > 0 ? displayPosition / songDuration : 0), height: 6)
+                            .animation(.linear(duration: 0.1), value: displayPosition)
                     }
                     .frame(height: 6)
                 }
@@ -341,6 +371,225 @@ struct EditButtonView: View {
         .animation(.spring(response: 0.3), value: fadeOutEnabled)
     }
     
+    // MARK: - Voice Over Card
+    
+    private var voiceOverCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Voice Announcement", systemImage: "speaker.wave.2.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+            
+            // Enable toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable Voice Over")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Text("Speak text before playing the song")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+                Toggle("", isOn: $voiceOverEnabled)
+                    .labelsHidden()
+                    .tint(Color(hex: "#6366f1"))
+                    .scaleEffect(0.85)
+            }
+            .padding(10)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(10)
+            
+            if voiceOverEnabled {
+                // Text input
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Announcement Text")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    TextField("Enter text to speak...", text: $voiceOverText)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .padding(10)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(8)
+                }
+                
+                // Voice selection
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Voice")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(speechService.availableVoices, id: \.identifier) { voice in
+                                Button(action: { selectedVoiceID = voice.identifier }) {
+                                    Text(voice.name.replacingOccurrences(of: " (Enhanced)", with: ""))
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundColor(selectedVoiceID == voice.identifier ? .white : .gray)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            selectedVoiceID == voice.identifier ?
+                                            Color(hex: "#6366f1") :
+                                            Color.white.opacity(0.1)
+                                        )
+                                        .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Rate slider
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Speed")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Text(String(format: "%.0f%%", voiceOverRate * 100))
+                            .font(.caption)
+                            .foregroundColor(.white)
+                    }
+                    Slider(value: $voiceOverRate, in: 0...1)
+                        .tint(Color(hex: "#6366f1"))
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(8)
+                
+                // Pitch slider
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Pitch")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Text(String(format: "%.1f", voiceOverPitch))
+                            .font(.caption)
+                            .foregroundColor(.white)
+                    }
+                    Slider(value: $voiceOverPitch, in: 0.5...2.0)
+                        .tint(Color(hex: "#8b5cf6"))
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(8)
+                
+                // Volume slider
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Volume")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Text(String(format: "%.0f%%", voiceOverVolume * 100))
+                            .font(.caption)
+                            .foregroundColor(.white)
+                    }
+                    Slider(value: $voiceOverVolume, in: 0...1)
+                        .tint(Color(hex: "#ec4899"))
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(8)
+                
+                // Pre-delay selector
+                HStack {
+                    Text("Pre-Delay")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Spacer()
+                    HStack(spacing: 6) {
+                        ForEach([0.0, 0.5, 1.0, 2.0], id: \.self) { delay in
+                            Button(action: { voiceOverPreDelay = delay }) {
+                                Text(delay == 0 ? "None" : "\(String(format: "%.1f", delay))s")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundColor(voiceOverPreDelay == delay ? .white : .gray)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        voiceOverPreDelay == delay ?
+                                        Color(hex: "#6366f1") :
+                                        Color.white.opacity(0.1)
+                                    )
+                                    .cornerRadius(6)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(8)
+                
+                // Post-delay selector
+                HStack {
+                    Text("Post-Delay")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Spacer()
+                    HStack(spacing: 6) {
+                        ForEach([0.0, 0.5, 1.0, 2.0], id: \.self) { delay in
+                            Button(action: { voiceOverPostDelay = delay }) {
+                                Text(delay == 0 ? "None" : "\(String(format: "%.1f", delay))s")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundColor(voiceOverPostDelay == delay ? .white : .gray)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        voiceOverPostDelay == delay ?
+                                        Color(hex: "#6366f1") :
+                                        Color.white.opacity(0.1)
+                                    )
+                                    .cornerRadius(6)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(8)
+                
+                // Preview button
+                Button(action: {
+                    let settings = VoiceOverSettings(
+                        enabled: true,
+                        text: voiceOverText,
+                        voiceIdentifier: selectedVoiceID,
+                        rate: voiceOverRate,
+                        pitch: voiceOverPitch,
+                        volume: voiceOverVolume,
+                        preDelay: voiceOverPreDelay,
+                        postDelay: voiceOverPostDelay
+                    )
+                    speechService.previewVoice(text: voiceOverText, settings: settings)
+                }) {
+                    HStack {
+                        Spacer()
+                        Image(systemName: speechService.isSpeaking ? "stop.fill" : "play.fill")
+                            .font(.caption)
+                        Text(speechService.isSpeaking ? "Stop Preview" : "Preview Voice")
+                            .font(.caption.weight(.medium))
+                        Spacer()
+                    }
+                    .foregroundColor(.white)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(8)
+                }
+                .disabled(voiceOverText.isEmpty)
+                .opacity(voiceOverText.isEmpty ? 0.5 : 1.0)
+            }
+        }
+        .compactCardStyle()
+        .animation(.spring(response: 0.3), value: voiceOverEnabled)
+    }
+    
     // MARK: - Categories Card (Compact)
     
     private var categoriesCard: some View {
@@ -445,6 +694,18 @@ struct EditButtonView: View {
         fadeOutEnabled = button.fadeOutEnabled
         fadeOutDuration = button.fadeOutDuration
         
+        // Load voice over settings
+        if let voiceOver = button.voiceOver {
+            voiceOverEnabled = voiceOver.enabled
+            voiceOverText = voiceOver.text
+            voiceOverRate = voiceOver.rate
+            voiceOverPitch = voiceOver.pitch
+            voiceOverVolume = voiceOver.volume
+            voiceOverPreDelay = voiceOver.preDelay
+            voiceOverPostDelay = voiceOver.postDelay
+            selectedVoiceID = voiceOver.voiceIdentifier
+        }
+        
         if let duration = audioPlayer.getSongDuration(persistentID: button.songPersistentID) {
             songDuration = duration
         }
@@ -496,8 +757,25 @@ struct EditButtonView: View {
         updatedButton.fadeOutEnabled = fadeOutEnabled
         updatedButton.fadeOutDuration = fadeOutDuration
         
+        // Save voice over settings
+        if voiceOverEnabled && !voiceOverText.isEmpty {
+            updatedButton.voiceOver = VoiceOverSettings(
+                enabled: voiceOverEnabled,
+                text: voiceOverText,
+                voiceIdentifier: selectedVoiceID,
+                rate: voiceOverRate,
+                pitch: voiceOverPitch,
+                volume: voiceOverVolume,
+                preDelay: voiceOverPreDelay,
+                postDelay: voiceOverPostDelay
+            )
+        } else {
+            updatedButton.voiceOver = nil
+        }
+        
         dataStore.updateButton(updatedButton)
         audioPlayer.stopPreview()
+        speechService.stop()
         dismiss()
     }
 }
