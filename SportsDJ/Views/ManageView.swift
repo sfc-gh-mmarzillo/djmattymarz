@@ -48,9 +48,6 @@ struct ManageView: View {
                         .foregroundColor(.white)
                 }
             }
-            .toolbarBackground(Color(hex: "#1a1a2e"), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
     

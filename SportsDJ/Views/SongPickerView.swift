@@ -22,6 +22,13 @@ struct SongPickerView: View {
     @State private var isSearchingSpotify: Bool = false
     @State private var spotifyError: String?
     @StateObject private var spotifyService = SpotifyService.shared
+    @State private var searchDebounceTimer: Timer?
+    
+    init(selectedSong: Binding<MPMediaItem?>, songDuration: Binding<Double>, onSpotifySelect: ((SpotifyTrack) -> Void)? = nil) {
+        self._selectedSong = selectedSong
+        self._songDuration = songDuration
+        self.onSpotifySelect = onSpotifySelect
+    }
     
     enum SongSource: String, CaseIterable {
         case library = "Library"
@@ -89,9 +96,6 @@ struct SongPickerView: View {
                         .foregroundColor(.gray)
                 }
             }
-            .toolbarBackground(Color(hex: "#1a1a2e"), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear {
                 checkMusicLibraryPermission()
             }
@@ -264,7 +268,7 @@ struct SongPickerView: View {
     
     private var playlistsView: some View {
         Group {
-            if let playlist = selectedPlaylist {
+            if selectedPlaylist != nil {
                 // Show playlist contents
                 VStack(spacing: 0) {
                     // Back button
@@ -618,8 +622,6 @@ struct SongPickerView: View {
     }
     
     // MARK: - Spotify Search
-    
-    private var searchDebounceTimer: Timer?
     
     private func searchSpotifyDebounced() {
         searchDebounceTimer?.invalidate()

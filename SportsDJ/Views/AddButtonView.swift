@@ -57,9 +57,6 @@ struct AddButtonView: View {
             .navigationTitle("Add Sound")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(content: toolbarContent)
-            .toolbarBackground(Color(hex: "#1a1a2e"), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showingSongPicker) {
                 SongPickerView(selectedSong: $selectedSong, songDuration: $songDuration)
             }
@@ -381,17 +378,16 @@ struct AddButtonView: View {
                 }
                 .padding()
             } else {
-                FlowLayout(spacing: 10) {
-                    ForEach(dataStore.filteredCategories) { category in
-                        CategoryChip(
-                            category: category,
-                            isSelected: selectedCategories.contains(category.name)
-                        ) {
-                            if selectedCategories.contains(category.name) {
-                                selectedCategories.remove(category.name)
-                            } else {
-                                selectedCategories.insert(category.name)
-                            }
+                // iOS 15 compatible wrapping layout
+                WrappingHStack(items: dataStore.filteredCategories, spacing: 10) { category in
+                    CategoryChip(
+                        category: category,
+                        isSelected: selectedCategories.contains(category.name)
+                    ) {
+                        if selectedCategories.contains(category.name) {
+                            selectedCategories.remove(category.name)
+                        } else {
+                            selectedCategories.insert(category.name)
                         }
                     }
                 }
@@ -512,50 +508,63 @@ struct CategoryChip: View {
     }
 }
 
-// MARK: - Flow Layout
+// MARK: - Wrapping HStack (iOS 15 compatible)
 
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
+struct WrappingHStack<Item: Identifiable, Content: View>: View {
+    let items: [Item]
+    let spacing: CGFloat
+    let content: (Item) -> Content
     
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, spacing: spacing)
-        return CGSize(width: proposal.width ?? 0, height: result.height)
+    init(items: [Item], spacing: CGFloat = 8, @ViewBuilder content: @escaping (Item) -> Content) {
+        self.items = items
+        self.spacing = spacing
+        self.content = content
     }
     
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
-        for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x,
-                                      y: bounds.minY + result.positions[index].y),
-                         proposal: .unspecified)
+    var body: some View {
+        GeometryReader { geometry in
+            self.generateContent(in: geometry)
         }
+        .frame(height: calculateHeight())
     }
     
-    struct FlowResult {
-        var positions: [CGPoint] = []
+    private func generateContent(in geometry: GeometryProxy) -> some View {
+        var width: CGFloat = 0
         var height: CGFloat = 0
         
-        init(in width: CGFloat, subviews: Subviews, spacing: CGFloat) {
-            var x: CGFloat = 0
-            var y: CGFloat = 0
-            var rowHeight: CGFloat = 0
-            
-            for subview in subviews {
-                let size = subview.sizeThatFits(.unspecified)
-                
-                if x + size.width > width && x > 0 {
-                    x = 0
-                    y += rowHeight + spacing
-                    rowHeight = 0
-                }
-                
-                positions.append(CGPoint(x: x, y: y))
-                rowHeight = max(rowHeight, size.height)
-                x += size.width + spacing
+        return ZStack(alignment: .topLeading) {
+            ForEach(items) { item in
+                content(item)
+                    .padding(.trailing, spacing)
+                    .padding(.bottom, spacing)
+                    .alignmentGuide(.leading) { dimension in
+                        if abs(width - dimension.width) > geometry.size.width {
+                            width = 0
+                            height -= dimension.height + spacing
+                        }
+                        let result = width
+                        if item.id == items.last?.id as? Item.ID {
+                            width = 0
+                        } else {
+                            width -= dimension.width
+                        }
+                        return result
+                    }
+                    .alignmentGuide(.top) { _ in
+                        let result = height
+                        if item.id == items.last?.id as? Item.ID {
+                            height = 0
+                        }
+                        return result
+                    }
             }
-            
-            height = y + rowHeight
         }
+    }
+    
+    private func calculateHeight() -> CGFloat {
+        // Estimate height based on item count - will adjust dynamically
+        let estimatedRows = max(1, (items.count + 2) / 3)
+        return CGFloat(estimatedRows) * 50
     }
 }
 

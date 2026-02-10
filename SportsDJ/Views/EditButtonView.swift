@@ -73,9 +73,6 @@ struct EditButtonView: View {
                     .disabled(buttonName.isEmpty)
                 }
             }
-            .toolbarBackground(Color(hex: "#1a1a2e"), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .alert("Delete Sound?", isPresented: $showDeleteAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Delete", role: .destructive) {
@@ -367,17 +364,16 @@ struct EditButtonView: View {
                 }
                 .padding()
             } else {
-                FlowLayout(spacing: 10) {
-                    ForEach(dataStore.filteredCategories) { category in
-                        CategoryChip(
-                            category: category,
-                            isSelected: selectedCategories.contains(category.name)
-                        ) {
-                            if selectedCategories.contains(category.name) {
-                                selectedCategories.remove(category.name)
-                            } else {
-                                selectedCategories.insert(category.name)
-                            }
+                // iOS 15 compatible wrapping layout
+                WrappingHStack(items: dataStore.filteredCategories, spacing: 10) { category in
+                    CategoryChip(
+                        category: category,
+                        isSelected: selectedCategories.contains(category.name)
+                    ) {
+                        if selectedCategories.contains(category.name) {
+                            selectedCategories.remove(category.name)
+                        } else {
+                            selectedCategories.insert(category.name)
                         }
                     }
                 }
