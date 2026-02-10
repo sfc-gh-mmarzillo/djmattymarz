@@ -9,16 +9,25 @@ struct ContentView: View {
     @State private var showingManageView = false
     @State private var showingBulkImport = false
     @State private var editingButton: SoundButton?
+    @State private var editingPlayer: Player?
     @State private var isEditMode = false
-    @State private var isReorderMode = false
-    @State private var showLineup = false
+    @State private var showLineupOCR = false
+    @State private var showAddPlayer = false
     
+    // Filter out Lineup sounds from main grid - they show in batting order
     var filteredButtons: [SoundButton] {
-        let eventFiltered = dataStore.filteredButtons.sorted { $0.order < $1.order }
+        let eventFiltered = dataStore.filteredButtons
+            .filter { !$0.categoryTags.contains("Lineup") }
+            .sorted { $0.order < $1.order }
         if selectedFilter == "All" {
             return eventFiltered
         }
         return eventFiltered.filter { $0.categoryTags.contains(selectedFilter) }
+    }
+    
+    // Filter categories to hide "Lineup" from filter bar
+    var visibleCategories: [Category] {
+        dataStore.filteredCategories.filter { $0.name != "Lineup" }
     }
     
     let columns = [
@@ -62,27 +71,9 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    HStack(spacing: 12) {
-                        Button(action: { isEditMode.toggle() }) {
-                            Text(isEditMode ? "Done" : "Edit")
-                                .foregroundColor(.white)
-                        }
-                        
-                        if filteredButtons.count > 1 {
-                            Button(action: {
-                                withAnimation(.spring(response: 0.3)) {
-                                    isReorderMode.toggle()
-                                }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: isReorderMode ? "checkmark" : "arrow.up.arrow.down")
-                                        .font(.caption)
-                                    Text(isReorderMode ? "Done" : "Reorder")
-                                        .font(.subheadline)
-                                }
-                                .foregroundColor(isReorderMode ? Color(hex: "#22c55e") : Color(hex: "#6366f1"))
-                            }
-                        }
+                    Button(action: { isEditMode.toggle() }) {
+                        Text(isEditMode ? "Done" : "Edit")
+                            .foregroundColor(.white)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -203,7 +194,7 @@ struct ContentView: View {
                     selectedFilter = "All"
                 }
                 
-                ForEach(dataStore.filteredCategories) { category in
+                ForEach(visibleCategories) { category in
                     ModernFilterChip(
                         title: category.name,
                         isSelected: selectedFilter == category.name,
@@ -324,184 +315,162 @@ struct ContentView: View {
     
     var buttonGrid: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                if isReorderMode {
-                    // Reorder list view
-                    reorderListView
-                } else {
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(filteredButtons) { button in
-                            ModernSoundButtonView(
-                                button: button,
-                                isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
-                                isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
-                                isEditMode: isEditMode
-                            )
-                            .onTapGesture {
-                                if isEditMode {
-                                    editingButton = button
+            VStack(spacing: 16) {
+                // Sound buttons grid
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(filteredButtons) { button in
+                        ModernSoundButtonView(
+                            button: button,
+                            isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
+                            isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
+                            isEditMode: isEditMode
+                        )
+                        .onTapGesture {
+                            if isEditMode {
+                                editingButton = button
+                            } else {
+                                if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
+                                    audioPlayer.stop()
                                 } else {
-                                    if audioPlayer.currentButtonID == button.id && (audioPlayer.isPlaying || audioPlayer.isLoading) {
-                                        audioPlayer.stop()
-                                    } else {
-                                        audioPlayer.play(button: button)
-                                    }
+                                    audioPlayer.play(button: button)
                                 }
                             }
-                            .onLongPressGesture {
-                                editingButton = button
-                            }
-                        }
-                        
-                        // Add Sound Button in grid
-                        AddSoundGridButton {
-                            showingAddButton = true
                         }
                     }
-                    .padding(16)
                     
-                    // Lineup Section
-                    lineupSection
+                    // Add Sound Button in grid
+                    AddSoundGridButton {
+                        showingAddButton = true
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                
+                // Batting Order Section
+                battingOrderSection
             }
         }
     }
     
-    // MARK: - Reorder List View
+    // MARK: - Batting Order Section
     
-    var reorderListView: some View {
-        LazyVStack(spacing: 12) {
-            ForEach(Array(filteredButtons.enumerated()), id: \.element.id) { index, button in
-                HStack(spacing: 12) {
-                    // Button info
-                    HStack(spacing: 12) {
-                        Circle()
-                            .fill(Color(hex: button.colorHex))
-                            .frame(width: 40, height: 40)
-                            .overlay(
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.white)
-                            )
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(button.name)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            
-                            if !button.categoryTags.isEmpty {
-                                Text(button.categoryTags.joined(separator: ", "))
-                                    .font(.caption2)
-                                    .foregroundColor(.gray)
-                                    .lineLimit(1)
-                            }
-                        }
-                        
-                        Spacer()
-                    }
-                    
-                    // Reorder buttons
-                    VStack(spacing: 6) {
-                        Button(action: { moveButton(at: index, direction: -1) }) {
-                            Image(systemName: "chevron.up")
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(index > 0 ? .white : .gray.opacity(0.3))
-                                .frame(width: 32, height: 24)
-                                .background(index > 0 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
-                                .cornerRadius(6)
-                        }
-                        .disabled(index == 0)
-                        
-                        Button(action: { moveButton(at: index, direction: 1) }) {
-                            Image(systemName: "chevron.down")
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(index < filteredButtons.count - 1 ? .white : .gray.opacity(0.3))
-                                .frame(width: 32, height: 24)
-                                .background(index < filteredButtons.count - 1 ? Color(hex: "#6366f1") : Color.white.opacity(0.1))
-                                .cornerRadius(6)
-                        }
-                        .disabled(index == filteredButtons.count - 1)
-                    }
-                }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.white.opacity(0.08))
-                )
-            }
-        }
-        .padding(16)
-    }
-    
-    private func moveButton(at index: Int, direction: Int) {
-        let newIndex = index + direction
-        guard newIndex >= 0 && newIndex < filteredButtons.count else { return }
-        
-        // Get the actual buttons from the full list
-        let sourceButton = filteredButtons[index]
-        let destButton = filteredButtons[newIndex]
-        
-        // Find their indices in the main buttons array
-        guard let sourceIdx = dataStore.buttons.firstIndex(where: { $0.id == sourceButton.id }),
-              let destIdx = dataStore.buttons.firstIndex(where: { $0.id == destButton.id }) else { return }
-        
-        // Swap the order values
-        withAnimation(.spring(response: 0.3)) {
-            var btn1 = dataStore.buttons[sourceIdx]
-            var btn2 = dataStore.buttons[destIdx]
-            let tempOrder = btn1.order
-            btn1.order = btn2.order
-            btn2.order = tempOrder
-            dataStore.updateButton(btn1)
-            dataStore.updateButton(btn2)
-        }
-    }
-    
-    // MARK: - Lineup Section
-    
-    var lineupSection: some View {
+    var battingOrderSection: some View {
         VStack(spacing: 0) {
-            // Lineup toggle header
-            Button(action: { withAnimation(.spring(response: 0.3)) { showLineup.toggle() } }) {
-                HStack {
-                    Image(systemName: "person.3.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+            // Header
+            HStack {
+                Image(systemName: "list.number")
+                    .font(.subheadline)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "#22c55e"), Color(hex: "#16a34a")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
+                    )
+                
+                Text("Batting Order")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                // Import from screenshot
+                Button(action: { showLineupOCR = true }) {
+                    Image(systemName: "doc.viewfinder")
+                        .font(.subheadline)
+                        .foregroundColor(Color(hex: "#8b5cf6"))
+                }
+                .padding(.trailing, 8)
+                
+                // Add player
+                Button(action: { showAddPlayer = true }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(Color(hex: "#22c55e"))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(hex: "#22c55e").opacity(0.1))
+            
+            if dataStore.filteredPlayers.isEmpty {
+                // Empty state
+                VStack(spacing: 12) {
+                    Image(systemName: "person.3")
+                        .font(.largeTitle)
+                        .foregroundColor(.gray.opacity(0.5))
                     
-                    Text("Lineup")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white)
-                    
-                    if !dataStore.filteredPlayers.isEmpty {
-                        Text("(\(dataStore.filteredPlayers.count))")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: showLineup ? "chevron.up" : "chevron.down")
-                        .font(.caption)
+                    Text("No players in lineup")
+                        .font(.subheadline)
                         .foregroundColor(.gray)
+                    
+                    Button(action: { showLineupOCR = true }) {
+                        HStack {
+                            Image(systemName: "doc.viewfinder")
+                            Text("Import from Screenshot")
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(Color(hex: "#8b5cf6"))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: "#8b5cf6").opacity(0.15))
+                        .cornerRadius(20)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            } else {
+                // Players list with batting order numbers
+                VStack(spacing: 8) {
+                    ForEach(Array(dataStore.filteredPlayers.enumerated()), id: \.element.id) { index, player in
+                        BattingOrderRow(
+                            player: player,
+                            battingOrder: index + 1,
+                            isPlaying: isPlayerPlaying(player),
+                            isEditMode: isEditMode,
+                            onPlay: { playPlayer(player) },
+                            onEdit: { editingPlayer = player }
+                        )
+                    }
+                    .onMove(perform: movePlayer)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color.white.opacity(0.05))
-            }
-            
-            if showLineup {
-                LineupView()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.spring(response: 0.3), value: showLineup)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .sheet(isPresented: $showLineupOCR) {
+            LineupOCRView()
+        }
+        .sheet(isPresented: $showAddPlayer) {
+            AddPlayerView()
+        }
+        .sheet(item: $editingPlayer) { player in
+            EditPlayerView(player: player)
+        }
+    }
+    
+    private func isPlayerPlaying(_ player: Player) -> Bool {
+        guard let soundID = player.announcementSoundID else { return false }
+        return audioPlayer.currentButtonID == soundID && audioPlayer.isPlaying
+    }
+    
+    private func playPlayer(_ player: Player) {
+        guard let soundID = player.announcementSoundID,
+              let sound = dataStore.buttons.first(where: { $0.id == soundID }) else { return }
+        
+        if audioPlayer.currentButtonID == soundID && (audioPlayer.isPlaying || audioPlayer.isLoading) {
+            audioPlayer.stop()
+        } else {
+            audioPlayer.play(button: sound)
+        }
+    }
+    
+    private func movePlayer(from source: IndexSet, to destination: Int) {
+        dataStore.movePlayer(from: source, to: destination)
     }
     
     // MARK: - Now Playing Bar
@@ -852,6 +821,98 @@ struct AddSoundGridButton: View {
             .frame(height: 110)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Batting Order Row
+
+struct BattingOrderRow: View {
+    let player: Player
+    let battingOrder: Int
+    let isPlaying: Bool
+    let isEditMode: Bool
+    let onPlay: () -> Void
+    let onEdit: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Batting order number
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "#22c55e"), Color(hex: "#16a34a")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 32, height: 32)
+                
+                Text("\(battingOrder)")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.white)
+            }
+            
+            // Jersey number badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.1))
+                    .frame(width: 36, height: 28)
+                
+                Text("#\(player.number)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundColor(.white)
+            }
+            
+            // Player info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(player.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                if let position = player.position, !position.isEmpty {
+                    Text(position)
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+            }
+            
+            Spacer()
+            
+            // Playing indicator or edit button
+            if isPlaying {
+                Image(systemName: "waveform")
+                    .font(.subheadline)
+                    .foregroundColor(Color(hex: "#22c55e"))
+                    .symbolEffect(.variableColor.iterative)
+            }
+            
+            if isEditMode {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(Color(hex: "#6366f1"))
+                }
+            }
+            
+            // Drag handle (always visible for reordering)
+            Image(systemName: "line.3.horizontal")
+                .font(.caption)
+                .foregroundColor(.gray.opacity(0.5))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isPlaying ? Color(hex: "#22c55e").opacity(0.15) : Color.white.opacity(0.05))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isEditMode {
+                onPlay()
+            }
+        }
     }
 }
 
