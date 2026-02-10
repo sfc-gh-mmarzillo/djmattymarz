@@ -21,15 +21,15 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
-	<key>CFBundleIconName</key>
-	<string>AppIcon</string>
-	<key>UILaunchScreen</key>
-	<dict/>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+    <key>UILaunchScreen</key>
+    <dict/>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>armv7</string>
@@ -39,6 +39,26 @@
         <string>UIInterfaceOrientationPortrait</string>
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    
+    <!-- Spotify Integration -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>spotify</string>
+        <string>spotify-action</string>
+    </array>
+    
+    <!-- URL Schemes for Spotify callback -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.sportsdj.app</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>sportsdj</string>
+            </array>
+        </dict>
     </array>
 </dict>
 </plist>

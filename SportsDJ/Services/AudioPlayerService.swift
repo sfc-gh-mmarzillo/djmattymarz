@@ -12,15 +12,19 @@ class AudioPlayerService: ObservableObject {
     @Published var isPreviewing: Bool = false
     @Published var currentArtwork: UIImage?
     @Published var isLoading: Bool = false
+    @Published var currentMusicSource: MusicSource = .appleMusic
     
     private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
+    private let spotifyService = SpotifyService.shared
     private var timer: Timer?
     private var targetStartTime: Double = 0
     private var hasSetStartTime: Bool = false
+    private var cancellables = Set<AnyCancellable>()
     
     init() {
         setupAudioSession()
         setupNotifications()
+        setupSpotifyObservers()
     }
     
     private func setupAudioSession() {
@@ -42,9 +46,36 @@ class AudioPlayerService: ObservableObject {
         musicPlayer.beginGeneratingPlaybackNotifications()
     }
     
+    private func setupSpotifyObservers() {
+        // Observe Spotify playback state
+        spotifyService.$isPlaying
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] playing in
+                guard let self = self, self.currentMusicSource == .spotify else { return }
+                self.isPlaying = playing
+            }
+            .store(in: &cancellables)
+        
+        spotifyService.$playbackPosition
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] position in
+                guard let self = self, self.currentMusicSource == .spotify else { return }
+                self.currentTime = position
+            }
+            .store(in: &cancellables)
+        
+        spotifyService.$currentArtwork
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] artwork in
+                guard let self = self, self.currentMusicSource == .spotify else { return }
+                self.currentArtwork = artwork
+            }
+            .store(in: &cancellables)
+    }
+    
     @objc private func playbackStateDidChange() {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.currentMusicSource == .appleMusic else { return }
             
             let state = self.musicPlayer.playbackState
             self.isPlaying = (state == .playing)
@@ -63,18 +94,34 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
+    // MARK: - Play Button (Auto-detects source)
+    
     func play(button: SoundButton) {
         stop()
         
+        currentButtonID = button.id
+        nowPlayingTitle = button.name
+        currentMusicSource = button.musicSource
+        
+        switch button.musicSource {
+        case .appleMusic:
+            playAppleMusic(button: button)
+        case .spotify:
+            playSpotify(button: button)
+        }
+    }
+    
+    // MARK: - Apple Music Playback
+    
+    private func playAppleMusic(button: SoundButton) {
         guard let song = fetchSong(persistentID: button.songPersistentID) else {
             print("Could not find song")
+            currentButtonID = nil
+            nowPlayingTitle = ""
             return
         }
         
-        // Set loading state
         isLoading = true
-        currentButtonID = button.id
-        nowPlayingTitle = button.name
         currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
         
         let collection = MPMediaItemCollection(items: [song])
@@ -107,8 +154,51 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
+    // MARK: - Spotify Playback
+    
+    private func playSpotify(button: SoundButton) {
+        guard let uri = button.spotifyURI else {
+            print("No Spotify URI for this button")
+            currentButtonID = nil
+            nowPlayingTitle = ""
+            return
+        }
+        
+        guard spotifyService.isConnected else {
+            // Try to connect first
+            isLoading = true
+            spotifyService.connect()
+            
+            // Check connection after delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                if self?.spotifyService.isConnected == true {
+                    self?.spotifyService.play(uri: uri, position: button.startTimeSeconds)
+                } else {
+                    self?.isLoading = false
+                    self?.currentButtonID = nil
+                    self?.nowPlayingTitle = ""
+                    print("Could not connect to Spotify")
+                }
+            }
+            return
+        }
+        
+        isLoading = true
+        spotifyService.play(uri: uri, position: button.startTimeSeconds)
+        
+        // Spotify will update via observers
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.isLoading = false
+        }
+    }
+    
+    // MARK: - Stop
+    
     func stop() {
+        // Stop both players to be safe
         musicPlayer.stop()
+        spotifyService.stop()
+        
         isPlaying = false
         isLoading = false
         currentButtonID = nil
@@ -120,15 +210,28 @@ class AudioPlayerService: ObservableObject {
         stopTimer()
     }
     
+    // MARK: - Toggle Play/Pause
+    
     func togglePlayPause() {
-        if musicPlayer.playbackState == .playing {
-            musicPlayer.pause()
-            isPlaying = false
-        } else {
-            musicPlayer.play()
-            isPlaying = true
+        switch currentMusicSource {
+        case .appleMusic:
+            if musicPlayer.playbackState == .playing {
+                musicPlayer.pause()
+                isPlaying = false
+            } else {
+                musicPlayer.play()
+                isPlaying = true
+            }
+        case .spotify:
+            if spotifyService.isPlaying {
+                spotifyService.pause()
+            } else {
+                spotifyService.resume()
+            }
         }
     }
+    
+    // MARK: - Fetch Song (Apple Music)
     
     private func fetchSong(persistentID: UInt64) -> MPMediaItem? {
         let predicate = MPMediaPropertyPredicate(
@@ -140,12 +243,17 @@ class AudioPlayerService: ObservableObject {
         return query.items?.first
     }
     
+    // MARK: - Timer
+    
     private func startTimer() {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             DispatchQueue.main.async {
-                self.currentTime = self.musicPlayer.currentPlaybackTime
+                if self.currentMusicSource == .appleMusic {
+                    self.currentTime = self.musicPlayer.currentPlaybackTime
+                }
+                // Spotify updates via observer
             }
         }
     }
@@ -154,6 +262,8 @@ class AudioPlayerService: ObservableObject {
         timer?.invalidate()
         timer = nil
     }
+    
+    // MARK: - Utilities
     
     func getSongDuration(persistentID: UInt64) -> Double? {
         guard let song = fetchSong(persistentID: persistentID) else { return nil }
@@ -165,6 +275,7 @@ class AudioPlayerService: ObservableObject {
     func playPreview(song: MPMediaItem, startTime: Double) {
         stopPreview()
         
+        currentMusicSource = .appleMusic
         isLoading = true
         
         let collection = MPMediaItemCollection(items: [song])
@@ -194,8 +305,29 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
+    func playSpotifyPreview(track: SpotifyTrack, startTime: Double) {
+        stopPreview()
+        
+        guard spotifyService.isConnected else {
+            spotifyService.connect()
+            return
+        }
+        
+        currentMusicSource = .spotify
+        isLoading = true
+        
+        spotifyService.play(uri: track.uri, position: startTime)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.isLoading = false
+            self?.isPreviewing = true
+            self?.duration = track.duration
+        }
+    }
+    
     func stopPreview() {
         musicPlayer.stop()
+        spotifyService.stop()
         isPreviewing = false
         isLoading = false
         targetStartTime = 0
@@ -204,7 +336,12 @@ class AudioPlayerService: ObservableObject {
     }
     
     func seekPreview(to time: Double) {
-        musicPlayer.currentPlaybackTime = time
+        switch currentMusicSource {
+        case .appleMusic:
+            musicPlayer.currentPlaybackTime = time
+        case .spotify:
+            spotifyService.seek(to: time)
+        }
     }
     
     deinit {

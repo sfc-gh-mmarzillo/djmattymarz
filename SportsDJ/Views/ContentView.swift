@@ -6,15 +6,16 @@ struct ContentView: View {
     @EnvironmentObject var dataStore: DataStore
     @State private var selectedFilter: String = "All"
     @State private var showingAddButton = false
-    @State private var showingManageCategories = false
+    @State private var showingManageView = false
     @State private var editingButton: SoundButton?
     @State private var isEditMode = false
     
     var filteredButtons: [SoundButton] {
+        let eventFiltered = dataStore.filteredButtons
         if selectedFilter == "All" {
-            return dataStore.buttons
+            return eventFiltered
         }
-        return dataStore.buttons.filter { $0.categoryTags.contains(selectedFilter) }
+        return eventFiltered.filter { $0.categoryTags.contains(selectedFilter) }
     }
     
     let columns = [
@@ -25,23 +26,42 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                filterBar
+            ZStack {
+                // Modern gradient background
+                LinearGradient(
+                    colors: [
+                        Color(hex: "#1a1a2e"),
+                        Color(hex: "#16213e"),
+                        Color(hex: "#0f0f23")
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
                 
-                if dataStore.buttons.isEmpty {
-                    emptyState
-                } else {
-                    buttonGrid
+                VStack(spacing: 0) {
+                    eventSelector
+                    filterBar
+                    
+                    if dataStore.buttons.isEmpty {
+                        emptyState
+                    } else if filteredButtons.isEmpty {
+                        noMatchingButtonsState
+                    } else {
+                        buttonGrid
+                    }
+                    
+                    Spacer(minLength: 0)
+                    nowPlayingBar
                 }
-                
-                nowPlayingBar
             }
             .navigationTitle("SportsDJ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(isEditMode ? "Done" : "Edit") {
-                        isEditMode.toggle()
+                    Button(action: { isEditMode.toggle() }) {
+                        Text(isEditMode ? "Done" : "Edit")
+                            .foregroundColor(.white)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -49,19 +69,23 @@ struct ContentView: View {
                         Button(action: { showingAddButton = true }) {
                             Label("Add Sound Button", systemImage: "plus.circle")
                         }
-                        Button(action: { showingManageCategories = true }) {
-                            Label("Manage Categories", systemImage: "tag")
+                        Button(action: { showingManageView = true }) {
+                            Label("Manage Events & Categories", systemImage: "slider.horizontal.3")
                         }
                     } label: {
                         Image(systemName: "plus")
+                            .foregroundColor(.white)
                     }
                 }
             }
+            .toolbarBackground(Color(hex: "#1a1a2e"), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showingAddButton) {
                 AddButtonView(preselectedCategory: selectedFilter == "All" ? nil : selectedFilter)
             }
-            .sheet(isPresented: $showingManageCategories) {
-                ManageCategoriesView()
+            .sheet(isPresented: $showingManageView) {
+                ManageView()
             }
             .sheet(item: $editingButton) { button in
                 EditButtonView(button: button)
@@ -69,49 +93,222 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - Event Selector (Instagram Stories Style)
+    
+    var eventSelector: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                // "All" option
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .stroke(
+                                dataStore.selectedEventID == nil ?
+                                LinearGradient(colors: [Color(hex: "#6366f1"), Color(hex: "#ec4899")], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                                LinearGradient(colors: [Color.gray.opacity(0.3), Color.gray.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                lineWidth: 3
+                            )
+                            .frame(width: 68, height: 68)
+                        
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(hex: "#6366f1").opacity(0.3), Color(hex: "#8b5cf6").opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 60, height: 60)
+                        
+                        Image(systemName: "music.note.list")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    }
+                    
+                    Text("All")
+                        .font(.caption2)
+                        .fontWeight(dataStore.selectedEventID == nil ? .semibold : .regular)
+                        .foregroundColor(dataStore.selectedEventID == nil ? .white : .gray)
+                }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3)) {
+                        dataStore.selectEvent(nil)
+                    }
+                }
+                
+                // Event circles
+                ForEach(dataStore.events) { event in
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .stroke(
+                                    dataStore.selectedEventID == event.id ?
+                                    LinearGradient(colors: [Color(hex: event.colorHex), Color(hex: event.colorHex).opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                                    LinearGradient(colors: [Color.gray.opacity(0.3), Color.gray.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    lineWidth: 3
+                                )
+                                .frame(width: 68, height: 68)
+                            
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(hex: event.colorHex).opacity(0.3), Color(hex: event.colorHex).opacity(0.2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 60, height: 60)
+                            
+                            Image(systemName: event.iconName)
+                                .font(.title2)
+                                .foregroundColor(.white)
+                        }
+                        .scaleEffect(dataStore.selectedEventID == event.id ? 1.05 : 1.0)
+                        
+                        Text(event.name)
+                            .font(.caption2)
+                            .fontWeight(dataStore.selectedEventID == event.id ? .semibold : .regular)
+                            .foregroundColor(dataStore.selectedEventID == event.id ? .white : .gray)
+                            .lineLimit(1)
+                    }
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3)) {
+                            dataStore.selectEvent(event)
+                        }
+                    }
+                }
+                
+                // Add Event Button
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                            .frame(width: 68, height: 68)
+                        
+                        Circle()
+                            .fill(Color.white.opacity(0.05))
+                            .frame(width: 60, height: 60)
+                        
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .foregroundColor(.gray)
+                    }
+                    
+                    Text("Add")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+                .onTapGesture {
+                    showingManageView = true
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+    
+    // MARK: - Filter Bar
+    
     var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                FilterChip(title: "All", isSelected: selectedFilter == "All") {
+            HStack(spacing: 10) {
+                ModernFilterChip(title: "All", isSelected: selectedFilter == "All", color: Color(hex: "#6366f1")) {
                     selectedFilter = "All"
                 }
                 
-                ForEach(dataStore.categories) { category in
-                    FilterChip(
+                ForEach(dataStore.filteredCategories) { category in
+                    ModernFilterChip(
                         title: category.name,
                         isSelected: selectedFilter == category.name,
-                        color: Color(hex: category.colorHex)
+                        color: Color(hex: category.colorHex),
+                        icon: category.iconName
                     ) {
                         selectedFilter = category.name
                     }
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
-        .background(Color(.systemBackground))
     }
     
+    // MARK: - Empty States
+    
     var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "music.note.list")
-                .font(.system(size: 60))
-                .foregroundColor(.secondary)
-            Text("No Sound Buttons Yet")
-                .font(.title2)
-                .fontWeight(.semibold)
-            Text("Tap + to add your first sound button")
-                .foregroundColor(.secondary)
+            
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#6366f1").opacity(0.1))
+                    .frame(width: 120, height: 120)
+                
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 50))
+                    .foregroundColor(Color(hex: "#6366f1"))
+            }
+            
+            VStack(spacing: 8) {
+                Text("No Sound Buttons Yet")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                Text("Tap + to add your first sound button")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+            
+            Button(action: { showingAddButton = true }) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add Sound")
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(25)
+            }
+            
             Spacer()
         }
     }
+    
+    var noMatchingButtonsState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 40))
+                .foregroundColor(.gray)
+            
+            Text("No sounds in this category")
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            Text("Try selecting a different filter")
+                .font(.subheadline)
+                .foregroundColor(.gray)
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Button Grid
     
     var buttonGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
+            LazyVGrid(columns: columns, spacing: 14) {
                 ForEach(filteredButtons) { button in
-                    SoundButtonView(
+                    ModernSoundButtonView(
                         button: button,
                         isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
                         isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
@@ -133,40 +330,79 @@ struct ContentView: View {
                     }
                 }
             }
-            .padding()
+            .padding(16)
         }
     }
+    
+    // MARK: - Now Playing Bar
     
     var nowPlayingBar: some View {
         Group {
             if audioPlayer.isPlaying || audioPlayer.isLoading || !audioPlayer.nowPlayingTitle.isEmpty {
                 VStack(spacing: 0) {
-                    Divider()
-                    HStack(spacing: 12) {
-                        // Album artwork
-                        if let artwork = audioPlayer.currentArtwork {
-                            Image(uiImage: artwork)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 50, height: 50)
-                                .cornerRadius(6)
-                        } else {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(.systemGray5))
-                                .frame(width: 50, height: 50)
-                                .overlay(
-                                    Image(systemName: "music.note")
-                                        .foregroundColor(.secondary)
+                    // Progress bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.1))
+                            
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(hex: "#6366f1"), Color(hex: "#ec4899")],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
                                 )
+                                .frame(width: audioPlayer.duration > 0 ? geo.size.width * (audioPlayer.currentTime / audioPlayer.duration) : 0)
+                        }
+                    }
+                    .frame(height: 3)
+                    
+                    HStack(spacing: 14) {
+                        // Album artwork
+                        ZStack {
+                            if let artwork = audioPlayer.currentArtwork {
+                                Image(uiImage: artwork)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 52, height: 52)
+                                    .cornerRadius(10)
+                            } else {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(hex: "#6366f1").opacity(0.3), Color(hex: "#8b5cf6").opacity(0.3)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 52, height: 52)
+                                    .overlay(
+                                        Image(systemName: "music.note")
+                                            .foregroundColor(.white.opacity(0.7))
+                                    )
+                            }
+                            
+                            if audioPlayer.isPlaying && !audioPlayer.isLoading {
+                                // Animated playing indicator
+                                Image(systemName: "waveform")
+                                    .font(.caption)
+                                    .foregroundColor(.white)
+                                    .padding(4)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(4)
+                            }
                         }
                         
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(audioPlayer.isLoading ? "Loading..." : "Now Playing")
                                 .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.gray)
                             Text(audioPlayer.nowPlayingTitle)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
+                                .foregroundColor(.white)
                                 .lineLimit(1)
                         }
                         
@@ -174,24 +410,38 @@ struct ContentView: View {
                         
                         if audioPlayer.isLoading {
                             ProgressView()
-                                .scaleEffect(0.8)
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.9)
                         } else {
                             Text(formatTime(audioPlayer.currentTime))
                                 .font(.caption)
                                 .monospacedDigit()
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.gray)
                         }
                         
                         Button(action: { audioPlayer.stop() }) {
                             Image(systemName: "stop.circle.fill")
                                 .font(.title)
-                                .foregroundColor(.red)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color(hex: "#f43f5e"), Color(hex: "#ec4899")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
-                .background(Color(.systemBackground))
+                .background(
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Rectangle()
+                                .fill(Color(hex: "#1a1a2e").opacity(0.8))
+                        )
+                )
             }
         }
     }
@@ -203,31 +453,56 @@ struct ContentView: View {
     }
 }
 
-struct FilterChip: View {
+// MARK: - Modern Filter Chip
+
+struct ModernFilterChip: View {
     let title: String
     let isSelected: Bool
     var color: Color = .blue
+    var icon: String? = nil
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(isSelected ? .semibold : .regular)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? color.opacity(0.2) : Color(.systemGray6))
-                .foregroundColor(isSelected ? color : .primary)
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(isSelected ? color : Color.clear, lineWidth: 1)
-                )
+            HStack(spacing: 6) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.caption)
+                }
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(isSelected ? .semibold : .medium)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Group {
+                    if isSelected {
+                        LinearGradient(
+                            colors: [color, color.opacity(0.8)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    } else {
+                        Color.white.opacity(0.08)
+                    }
+                }
+            )
+            .foregroundColor(isSelected ? .white : .gray)
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isSelected ? Color.clear : Color.white.opacity(0.1), lineWidth: 1)
+            )
         }
+        .scaleEffect(isSelected ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3), value: isSelected)
     }
 }
 
-struct SoundButtonView: View {
+// MARK: - Modern Sound Button View
+
+struct ModernSoundButtonView: View {
     let button: SoundButton
     let isPlaying: Bool
     let isLoading: Bool
@@ -237,48 +512,78 @@ struct SoundButtonView: View {
     
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(hex: button.colorHex).opacity(isPlaying ? 0.3 : (isLoading ? 0.1 : 0.15)))
+            // Background with glassmorphism
+            RoundedRectangle(cornerRadius: 18)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: button.colorHex).opacity(isPlaying ? 0.4 : 0.2),
+                            Color(hex: button.colorHex).opacity(isPlaying ? 0.2 : 0.1)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
             
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(hex: button.colorHex), lineWidth: isPlaying ? 3 : 1)
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: button.colorHex).opacity(isPlaying ? 0.8 : 0.3),
+                            Color(hex: button.colorHex).opacity(isPlaying ? 0.4 : 0.1)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: isPlaying ? 2 : 1
+                )
             
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 // Album artwork or icon
-                if let artwork = artwork {
-                    Image(uiImage: artwork)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 40, height: 40)
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color(hex: button.colorHex).opacity(0.5), lineWidth: 1)
-                        )
-                        .opacity(isLoading ? 0.5 : 1.0)
-                } else {
-                    Image(systemName: isPlaying ? "speaker.wave.3.fill" : "music.note")
-                        .font(.title3)
-                        .foregroundColor(Color(hex: button.colorHex))
-                        .opacity(isLoading ? 0.5 : 1.0)
+                ZStack {
+                    if let artwork = artwork {
+                        Image(uiImage: artwork)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 48, height: 48)
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                    } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(hex: button.colorHex).opacity(0.3))
+                            .frame(width: 48, height: 48)
+                            .overlay(
+                                Image(systemName: isPlaying ? "waveform" : "music.note")
+                                    .font(.title3)
+                                    .foregroundColor(.white.opacity(0.8))
+                            )
+                    }
+                    
+                    if isLoading {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.black.opacity(0.5))
+                            .frame(width: 48, height: 48)
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                    }
                 }
+                .opacity(isLoading ? 0.7 : 1.0)
                 
                 Text(button.name)
                     .font(.caption2)
                     .fontWeight(.medium)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundColor(isLoading ? .secondary : .primary)
+                    .foregroundColor(.white)
+                    .opacity(isLoading ? 0.6 : 1.0)
             }
-            .padding(6)
+            .padding(10)
             
-            // Loading indicator overlay
-            if isLoading {
-                ProgressView()
-                    .scaleEffect(0.7)
-            }
-            
-            // Playing indicator overlay
+            // Playing indicator
             if isPlaying && !isLoading {
                 VStack {
                     Spacer()
@@ -287,30 +592,37 @@ struct SoundButtonView: View {
                         Image(systemName: "speaker.wave.2.fill")
                             .font(.caption2)
                             .foregroundColor(.white)
-                            .padding(4)
+                            .padding(5)
                             .background(Color(hex: button.colorHex))
-                            .cornerRadius(4)
+                            .cornerRadius(6)
                     }
                 }
-                .padding(4)
+                .padding(6)
             }
             
+            // Edit mode indicator
             if isEditMode {
                 VStack {
                     HStack {
                         Spacer()
                         Image(systemName: "pencil.circle.fill")
-                            .foregroundColor(.blue)
-                            .background(Color.white.clipShape(Circle()))
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .background(
+                                Circle()
+                                    .fill(Color(hex: "#6366f1"))
+                                    .frame(width: 24, height: 24)
+                            )
                     }
                     Spacer()
                 }
-                .padding(4)
+                .padding(6)
             }
         }
-        .frame(height: 100)
-        .scaleEffect(isPlaying ? 1.02 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isPlaying)
+        .frame(height: 110)
+        .scaleEffect(isPlaying ? 1.03 : 1.0)
+        .shadow(color: isPlaying ? Color(hex: button.colorHex).opacity(0.4) : Color.clear, radius: 10)
+        .animation(.spring(response: 0.3), value: isPlaying)
         .onAppear {
             loadArtwork()
         }
@@ -326,10 +638,12 @@ struct SoundButtonView: View {
         
         if let song = query.items?.first,
            let songArtwork = song.artwork {
-            artwork = songArtwork.image(at: CGSize(width: 80, height: 80))
+            artwork = songArtwork.image(at: CGSize(width: 96, height: 96))
         }
     }
 }
+
+// MARK: - Color Extension
 
 extension Color {
     init(hex: String) {
