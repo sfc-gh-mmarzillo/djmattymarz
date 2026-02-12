@@ -88,19 +88,25 @@ class ElevenLabsService: ObservableObject {
     }
     
     func generateSpeech(text: String, voiceId: String, completion: @escaping (Result<URL, Error>) -> Void) {
+        print("[ElevenLabs] generateSpeech called - text: '\(text.prefix(30))...', voiceId: \(voiceId)")
+        
         if let cachedURL = getCachedAudioURL(text: text, voiceId: voiceId) {
+            print("[ElevenLabs] Found cached audio at: \(cachedURL)")
             completion(.success(cachedURL))
             return
         }
         
         let key = apiKey
+        print("[ElevenLabs] API key present: \(!key.isEmpty), canGenerate: \(canGenerate)")
         
         guard canGenerate else {
+            print("[ElevenLabs] ERROR: Usage limit reached")
             completion(.failure(ElevenLabsError.usageLimitReached))
             return
         }
         
         isGenerating = true
+        print("[ElevenLabs] Making API request...")
         
         let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceId)")!
         var request = URLRequest(url: url)
@@ -127,39 +133,54 @@ class ElevenLabsService: ObservableObject {
                 self?.isGenerating = false
                 
                 if let error = error {
+                    print("[ElevenLabs] ERROR: Network error - \(error.localizedDescription)")
                     completion(.failure(error))
                     return
                 }
                 
                 guard let httpResponse = response as? HTTPURLResponse else {
+                    print("[ElevenLabs] ERROR: Invalid response type")
                     completion(.failure(ElevenLabsError.invalidResponse))
                     return
                 }
                 
+                print("[ElevenLabs] Response status: \(httpResponse.statusCode)")
+                
                 guard httpResponse.statusCode == 200 else {
                     if httpResponse.statusCode == 401 {
+                        print("[ElevenLabs] ERROR: Invalid API key")
                         completion(.failure(ElevenLabsError.invalidAPIKey))
                     } else if httpResponse.statusCode == 429 {
+                        print("[ElevenLabs] ERROR: Rate limited")
                         completion(.failure(ElevenLabsError.rateLimited))
                     } else {
+                        print("[ElevenLabs] ERROR: API error \(httpResponse.statusCode)")
+                        if let data = data, let errorStr = String(data: data, encoding: .utf8) {
+                            print("[ElevenLabs] Error body: \(errorStr)")
+                        }
                         completion(.failure(ElevenLabsError.apiError(httpResponse.statusCode)))
                     }
                     return
                 }
                 
                 guard let audioData = data else {
+                    print("[ElevenLabs] ERROR: No audio data")
                     completion(.failure(ElevenLabsError.noData))
                     return
                 }
+                
+                print("[ElevenLabs] SUCCESS: Received \(audioData.count) bytes of audio")
                 
                 let filename = self?.getCacheKey(text: text, voiceId: voiceId) ?? "temp.mp3"
                 let fileURL = self?.cacheDirectory.appendingPathComponent(String(filename)) ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
                 
                 do {
                     try audioData.write(to: fileURL)
+                    print("[ElevenLabs] Saved audio to: \(fileURL)")
                     self?.incrementUsage()
                     completion(.success(fileURL))
                 } catch {
+                    print("[ElevenLabs] ERROR: Failed to save audio - \(error)")
                     completion(.failure(error))
                 }
             }
@@ -179,13 +200,16 @@ class ElevenLabsService: ObservableObject {
     
     private func playAudio(url: URL) {
         do {
+            print("[ElevenLabs] playAudio called with URL: \(url)")
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
             
             audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.play()
+            audioPlayer?.volume = 1.0
+            let success = audioPlayer?.play() ?? false
+            print("[ElevenLabs] Audio playback started: \(success), duration: \(audioPlayer?.duration ?? 0)s")
         } catch {
-            print("Audio playback error: \(error)")
+            print("[ElevenLabs] ERROR: Audio playback error - \(error)")
         }
     }
     

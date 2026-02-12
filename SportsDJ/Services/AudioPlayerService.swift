@@ -229,23 +229,28 @@ class AudioPlayerService: ObservableObject {
     // MARK: - Intelligent Voice Selection (ElevenLabs or iOS)
     
     private func speakWithBestVoice(text: String, settings: VoiceOverSettings, completion: (() -> Void)?) {
+        print("[AudioPlayer] speakWithBestVoice - voiceType: \(settings.voiceType), voiceIdentifier: \(settings.voiceIdentifier ?? "nil")")
         if settings.voiceType == .elevenLabs, let voiceId = settings.voiceIdentifier {
+            print("[AudioPlayer] Routing to ElevenLabs with voiceId: \(voiceId)")
             playElevenLabsAnnouncement(text: text, voiceId: voiceId, completion: completion)
         } else {
+            print("[AudioPlayer] Routing to iOS TTS")
             speechService.speak(settings: settings, completion: completion)
         }
     }
     
     func playElevenLabsAnnouncement(text: String, voiceId: String, completion: (() -> Void)?) {
+        print("[AudioPlayer] playElevenLabsAnnouncement - text: '\(text.prefix(30))...', voiceId: \(voiceId)")
         isSpeakingVoiceOver = true
         
         elevenLabsService.generateSpeech(text: text, voiceId: voiceId) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let audioURL):
+                    print("[AudioPlayer] ElevenLabs audio ready, playing: \(audioURL)")
                     self?.playElevenLabsAudio(url: audioURL, completion: completion)
                 case .failure(let error):
-                    print("ElevenLabs error, falling back to iOS: \(error)")
+                    print("[AudioPlayer] ElevenLabs error, falling back to iOS: \(error)")
                     // Fallback to iOS TTS
                     let settings = VoiceOverSettings(enabled: true, text: text)
                     self?.speechService.speak(settings: settings, completion: completion)
@@ -256,9 +261,11 @@ class AudioPlayerService: ObservableObject {
     
     private func playElevenLabsAudio(url: URL, completion: (() -> Void)?) {
         do {
+            print("[AudioPlayer] playElevenLabsAudio - URL: \(url)")
             elevenLabsPlayer = try AVAudioPlayer(contentsOf: url)
             elevenLabsPlayer?.volume = 1.0
-            elevenLabsPlayer?.play()
+            let success = elevenLabsPlayer?.play() ?? false
+            print("[AudioPlayer] ElevenLabs audio playback started: \(success), duration: \(elevenLabsPlayer?.duration ?? 0)s")
             
             // Monitor for completion
             let duration = elevenLabsPlayer?.duration ?? 3.0
@@ -267,7 +274,7 @@ class AudioPlayerService: ObservableObject {
                 completion?()
             }
         } catch {
-            print("Error playing ElevenLabs audio: \(error)")
+            print("[AudioPlayer] ERROR: Error playing ElevenLabs audio - \(error)")
             isSpeakingVoiceOver = false
             completion?()
         }
