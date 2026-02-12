@@ -173,9 +173,13 @@ struct ContentView: View {
                             .foregroundColor(.gray)
                     }
                     
-                    Text("Add")
+                    Text("Add Event")
                         .font(.caption2)
                         .foregroundColor(.gray)
+                    Text("or Team")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
                 }
                 .onTapGesture {
                     showingManageView = true
@@ -204,6 +208,11 @@ struct ContentView: View {
                     ) {
                         selectedFilter = category.name
                     }
+                }
+                
+                // Add Category Button
+                AddCategoryChip {
+                    showingManageView = true
                 }
             }
             .padding(.horizontal, 16)
@@ -299,7 +308,30 @@ struct ContentView: View {
                     .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 
+                // Show assigned voice
+                if let eventID = dataStore.selectedEventID,
+                   let voice = dataStore.voiceForTeam(eventID) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mic.fill")
+                            .font(.caption2)
+                            .foregroundColor(Color(hex: "#8b5cf6"))
+                        Text(voice.name)
+                            .font(.caption)
+                            .foregroundColor(Color(hex: "#8b5cf6"))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: "#8b5cf6").opacity(0.15))
+                    .cornerRadius(8)
+                }
+                
                 Spacer()
+                
+                // Add Voice button
+                AddVoiceButton {
+                    showingVoicesView = true
+                }
+                .padding(.trailing, 4)
                 
                 // Import from screenshot
                 Button(action: { showLineupOCR = true }) {
@@ -944,6 +976,60 @@ struct BattingOrderRow: View {
             if !isEditMode {
                 onPlay()
             }
+        }
+    }
+}
+
+// MARK: - Add Category Chip (Dotted Style)
+
+struct AddCategoryChip: View {
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.caption)
+                Text("Add Category")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.03))
+            .foregroundColor(.gray)
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.white.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+            )
+        }
+    }
+}
+
+// MARK: - Add Voice Button (Dotted Style)
+
+struct AddVoiceButton: View {
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.caption2)
+                Text("Voice")
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.03))
+            .foregroundColor(.gray)
+            .cornerRadius(14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.white.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, dash: [4, 2]))
+            )
         }
     }
 }

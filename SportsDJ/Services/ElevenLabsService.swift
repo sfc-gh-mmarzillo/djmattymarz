@@ -13,7 +13,7 @@ class ElevenLabsService: ObservableObject {
     private let fileManager = FileManager.default
     private var audioPlayer: AVAudioPlayer?
     
-    private let universalAPIKey = "sk_d011c1ac28512370e29220a0153df318062761db1b4cf641"
+    private let universalAPIKey = "sk_47a2505eb66c606b3b5f27deb6ebc7851d43cce2ce4eba20"
     
     private let defaultVoices: [ElevenLabsVoice] = [
         ElevenLabsVoice(id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, professional male voice - great for announcements"),
