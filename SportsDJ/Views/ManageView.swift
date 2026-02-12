@@ -197,20 +197,19 @@ struct EventsListView: View {
     private var addEventCard: some View {
         VStack(spacing: 16) {
             HStack {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(Color(hex: "#6366f1"))
-                Text("Create New Team/Event")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Spacer()
-                
-                // Expand/collapse chevron
-                if !showingAddEvent {
-                    Image(systemName: "chevron.down")
-                        .font(.caption)
+                ZStack {
+                    Circle()
+                        .stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                        .frame(width: 40, height: 40)
+                    
+                    Image(systemName: "plus")
+                        .font(.title3)
                         .foregroundColor(.gray)
                 }
+                Text("Add Event or Team")
+                    .font(.headline)
+                    .foregroundColor(.gray)
+                Spacer()
             }
             
             if showingAddEvent {
@@ -348,10 +347,10 @@ struct EventsListView: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.white.opacity(0.03))
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: 1, dash: showingAddEvent ? [] : [8, 4]))
                 )
         )
         .onTapGesture {
@@ -709,12 +708,18 @@ struct CategoriesListView: View {
     private var addCategoryCard: some View {
         VStack(spacing: 16) {
             HStack {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(Color(hex: "#6366f1"))
-                Text("Create New Category")
+                ZStack {
+                    Circle()
+                        .stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                        .frame(width: 40, height: 40)
+                    
+                    Image(systemName: "plus")
+                        .font(.title3)
+                        .foregroundColor(.gray)
+                }
+                Text("Add Category")
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.gray)
                 Spacer()
             }
             
@@ -853,10 +858,10 @@ struct CategoriesListView: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.white.opacity(0.03))
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: 1, dash: showingAddCategory ? [] : [8, 4]))
                 )
         )
         .onTapGesture {
