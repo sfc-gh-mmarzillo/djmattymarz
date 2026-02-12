@@ -162,13 +162,19 @@ class AudioPlayerService: ObservableObject {
         nowPlayingTitle = button.name
         currentMusicSource = button.musicSource
         
-        // Check if this is a voice-only button (lineup announcement)
-        if button.isVoiceOnly {
+        // Check if this is a voice-only button (lineup announcement without song)
+        if button.isVoiceOnly && !button.isLineupAnnouncement {
             playVoiceOnly(button: button)
             return
         }
         
-        // Check if there's a voice over to play first
+        // Check if this is a lineup announcement with song (overlapping playback)
+        if button.isLineupAnnouncement, let voiceOver = button.voiceOver, voiceOver.enabled {
+            playLineupAnnouncement(button: button, voiceOver: voiceOver)
+            return
+        }
+        
+        // Check if there's a voice over to play first (sequential)
         if let voiceOver = button.voiceOver, voiceOver.enabled, !voiceOver.text.isEmpty {
             playWithVoiceOver(button: button, voiceOver: voiceOver)
             return
@@ -184,11 +190,10 @@ class AudioPlayerService: ObservableObject {
         print("Initial volume captured: \(initialVolume)")
     }
     
-    // MARK: - Voice Only Playback (for lineup announcements)
+    // MARK: - Voice Only Playback (for lineup announcements without song)
     
     private func playVoiceOnly(button: SoundButton) {
         guard let voiceOver = button.voiceOver, voiceOver.enabled else {
-            // No voice settings, nothing to play
             stopImmediately()
             return
         }
@@ -206,7 +211,93 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    // MARK: - Voice Over + Music Playback
+    // MARK: - Lineup Announcement Playback (voice + song overlap)
+    
+    private func playLineupAnnouncement(button: SoundButton, voiceOver: VoiceOverSettings) {
+        isSpeakingVoiceOver = true
+        isPlaying = true
+        
+        speechService.speak(settings: voiceOver, completion: nil)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.playMusicWithFadeIn(button: button, fadeInDuration: 1.0)
+        }
+    }
+    
+    // MARK: - Music with Fade In
+    
+    private func playMusicWithFadeIn(button: SoundButton, fadeInDuration: Double) {
+        switch button.musicSource {
+        case .appleMusic:
+            playAppleMusicWithFadeIn(button: button, fadeInDuration: fadeInDuration)
+        case .spotify:
+            playSpotify(button: button)
+        }
+    }
+    
+    private func playAppleMusicWithFadeIn(button: SoundButton, fadeInDuration: Double) {
+        guard let song = fetchSong(persistentID: button.songPersistentID) else {
+            print("Could not find song for lineup")
+            return
+        }
+        
+        currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
+        
+        let collection = MPMediaItemCollection(items: [song])
+        musicPlayer.setQueue(with: collection)
+        
+        targetStartTime = button.startTimeSeconds
+        hasSetStartTime = false
+        
+        setSystemVolume(0)
+        
+        musicPlayer.prepareToPlay { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("Error preparing to play: \(error)")
+                    self.restoreVolume()
+                    return
+                }
+                
+                self.musicPlayer.currentPlaybackTime = button.startTimeSeconds
+                self.hasSetStartTime = true
+                self.musicPlayer.play()
+                
+                self.duration = song.playbackDuration
+                self.startTimer()
+                
+                self.fadeInMusic(duration: fadeInDuration)
+            }
+        }
+    }
+    
+    private func fadeInMusic(duration: Double) {
+        let fadeSteps = 20
+        let stepDuration = duration / Double(fadeSteps)
+        var currentStep = 0
+        
+        Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            currentStep += 1
+            let progress = Double(currentStep) / Double(fadeSteps)
+            let newVolume = self.initialVolume * Float(progress)
+            
+            self.setSystemVolume(newVolume)
+            
+            if currentStep >= fadeSteps {
+                timer.invalidate()
+                self.isSpeakingVoiceOver = false
+            }
+        }
+    }
+    
+    // MARK: - Voice Over + Music Playback (sequential)
     
     private func playWithVoiceOver(button: SoundButton, voiceOver: VoiceOverSettings) {
         isSpeakingVoiceOver = true

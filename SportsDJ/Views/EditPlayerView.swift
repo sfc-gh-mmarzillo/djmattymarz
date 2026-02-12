@@ -1,11 +1,13 @@
 import SwiftUI
 import MediaPlayer
 
-struct AddPlayerView: View {
+struct EditPlayerView: View {
     @EnvironmentObject var dataStore: DataStore
     @EnvironmentObject var audioPlayer: AudioPlayerService
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var speechService = SpeechService.shared
+    
+    let player: Player
     
     @State private var name: String = ""
     @State private var number: String = ""
@@ -15,10 +17,10 @@ struct AddPlayerView: View {
     @State private var musicSource: MusicSource = .appleMusic
     @State private var startTimeSeconds: Double = 0
     @State private var showSongPicker = false
+    @State private var showDeleteAlert = false
     
     private var teamVoice: Voice? {
-        guard let eventID = dataStore.selectedEventID else { return nil }
-        return dataStore.voiceForTeam(eventID)
+        dataStore.voiceForTeam(player.teamEventID)
     }
     
     var body: some View {
@@ -43,11 +45,12 @@ struct AddPlayerView: View {
                             startTimeCard
                         }
                         previewCard
+                        deleteCard
                     }
                     .padding()
                 }
             }
-            .navigationTitle("Add Player")
+            .navigationTitle("Edit Player")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -59,8 +62,8 @@ struct AddPlayerView: View {
                     .foregroundColor(.gray)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        addPlayer()
+                    Button("Save") {
+                        savePlayer()
                     }
                     .font(.body.weight(.semibold))
                     .foregroundColor(canSave ? Color(hex: "#6366f1") : .gray)
@@ -73,6 +76,17 @@ struct AddPlayerView: View {
                     selectedSpotifyTrack: $spotifyTrack,
                     selectedSource: $musicSource
                 )
+            }
+            .alert("Delete Player?", isPresented: $showDeleteAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    deletePlayer()
+                }
+            } message: {
+                Text("This will remove \(player.name) from the lineup.")
+            }
+            .onAppear {
+                loadPlayer()
             }
         }
     }
@@ -329,6 +343,22 @@ struct AddPlayerView: View {
         .cornerRadius(16)
     }
     
+    private var deleteCard: some View {
+        Button(action: { showDeleteAlert = true }) {
+            HStack {
+                Spacer()
+                Image(systemName: "trash")
+                Text("Delete Player")
+                Spacer()
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundColor(.white)
+            .padding(.vertical, 14)
+            .background(Color.red.opacity(0.8))
+            .cornerRadius(12)
+        }
+    }
+    
     private var canSave: Bool {
         !name.isEmpty && !number.isEmpty && Int(number) != nil
     }
@@ -363,6 +393,24 @@ struct AddPlayerView: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+    
+    private func loadPlayer() {
+        name = player.name
+        number = String(player.number)
+        position = player.position ?? ""
+        startTimeSeconds = player.songStartTimeSeconds
+        musicSource = player.musicSource ?? .appleMusic
+        
+        if let persistentID = player.songPersistentID, persistentID != 0 {
+            let predicate = MPMediaPropertyPredicate(
+                value: persistentID,
+                forProperty: MPMediaItemPropertyPersistentID
+            )
+            let query = MPMediaQuery()
+            query.addFilterPredicate(predicate)
+            selectedSong = query.items?.first
+        }
     }
     
     private func clearSong() {
@@ -405,32 +453,37 @@ struct AddPlayerView: View {
         }
     }
     
-    private func addPlayer() {
-        guard let playerNumber = Int(number),
-              let currentEventID = dataStore.selectedEventID else { return }
+    private func savePlayer() {
+        guard let playerNumber = Int(number) else { return }
         
         audioPlayer.stopPreview()
         speechService.stop()
         
-        let player = Player(
-            name: name,
-            number: playerNumber,
-            position: position.isEmpty ? nil : position,
-            lineupOrder: dataStore.filteredPlayers.count,
-            teamEventID: currentEventID,
-            songPersistentID: selectedSong?.persistentID,
-            spotifyURI: spotifyTrack?.uri,
-            musicSource: spotifyTrack != nil ? .spotify : .appleMusic,
-            songStartTimeSeconds: startTimeSeconds
-        )
+        var updatedPlayer = player
+        updatedPlayer.name = name
+        updatedPlayer.number = playerNumber
+        updatedPlayer.position = position.isEmpty ? nil : position
+        updatedPlayer.songPersistentID = selectedSong?.persistentID
+        updatedPlayer.spotifyURI = spotifyTrack?.uri
+        updatedPlayer.musicSource = spotifyTrack != nil ? .spotify : .appleMusic
+        updatedPlayer.songStartTimeSeconds = startTimeSeconds
         
-        _ = dataStore.addPlayerWithAnnouncement(player)
+        dataStore.updatePlayer(updatedPlayer)
+        dataStore.updatePlayerSound(updatedPlayer)
+        
+        dismiss()
+    }
+    
+    private func deletePlayer() {
+        audioPlayer.stopPreview()
+        speechService.stop()
+        dataStore.deletePlayer(player)
         dismiss()
     }
 }
 
 #Preview {
-    AddPlayerView()
+    EditPlayerView(player: Player(name: "Test Player", number: 7, position: "SS", teamEventID: UUID()))
         .environmentObject(DataStore())
         .environmentObject(AudioPlayerService())
 }

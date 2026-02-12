@@ -1245,10 +1245,13 @@ struct TeamVoiceSettingsView: View {
     
     let event: TeamEvent
     
+    @State private var selectedVoice: Voice?
     @State private var voiceRate: Float = 0.5
     @State private var voicePitch: Float = 1.0
     @State private var voiceVolume: Float = 1.0
-    @State private var selectedVoiceID: String? = nil
+    @State private var selectedVoiceIdentifier: String? = nil
+    @State private var voiceName: String = ""
+    @State private var isCreatingNew: Bool = false
     
     var body: some View {
         NavigationView {
@@ -1282,24 +1285,26 @@ struct TeamVoiceSettingsView: View {
                                 .font(.title2.weight(.bold))
                                 .foregroundColor(.white)
                             
-                            Text("Set the default voice for all player announcements in \(event.name)")
+                            Text("Assign a voice to \(event.name)'s lineup")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .multilineTextAlignment(.center)
                         }
                         .padding(.top, 20)
                         
-                        // Voice selection
-                        voiceSelectionCard
+                        // Available voices selection
+                        availableVoicesCard
                         
-                        // Voice settings sliders
-                        voiceSettingsCard
-                        
-                        // Preview button
-                        previewButton
+                        // Voice settings (show when editing or creating)
+                        if selectedVoice != nil || isCreatingNew {
+                            voiceConfigCard
+                            
+                            // Preview button
+                            previewButton
+                        }
                         
                         // Info text
-                        Text("New players added to this team will inherit these voice settings. You can customize individual players in their edit view.")
+                        Text("Players added to this lineup will use this voice for announcements.")
                             .font(.caption)
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)
@@ -1332,51 +1337,96 @@ struct TeamVoiceSettingsView: View {
         }
     }
     
-    // MARK: - Voice Selection Card
+    // MARK: - Available Voices Card
     
-    private var voiceSelectionCard: some View {
+    private var availableVoicesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Voice", systemImage: "person.wave.2.fill")
+            Label("Select Voice", systemImage: "person.wave.2.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
             
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // Default (best announcer) option
-                    Button(action: { selectedVoiceID = nil }) {
-                        VStack(spacing: 4) {
-                            Text("Announcer")
-                                .font(.caption.weight(.medium))
-                            Text("(Default)")
-                                .font(.caption2)
-                        }
-                        .foregroundColor(selectedVoiceID == nil ? .white : .gray)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            selectedVoiceID == nil ?
-                            Color(hex: "#22c55e") :
-                            Color.white.opacity(0.1)
-                        )
-                        .cornerRadius(8)
-                    }
-                    
-                    ForEach(speechService.availableVoices.prefix(10), id: \.identifier) { voice in
-                        Button(action: { selectedVoiceID = voice.identifier }) {
-                            Text(voice.name.replacingOccurrences(of: " (Enhanced)", with: ""))
-                                .font(.caption.weight(.medium))
-                                .foregroundColor(selectedVoiceID == voice.identifier ? .white : .gray)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    selectedVoiceID == voice.identifier ?
-                                    Color(hex: "#6366f1") :
-                                    Color.white.opacity(0.1)
-                                )
-                                .cornerRadius(8)
-                        }
+            // No voice option
+            Button(action: {
+                selectedVoice = nil
+                isCreatingNew = false
+            }) {
+                HStack {
+                    Image(systemName: "speaker.slash")
+                        .font(.caption)
+                    Text("No Voice")
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    if selectedVoice == nil && !isCreatingNew {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color(hex: "#22c55e"))
                     }
                 }
+                .foregroundColor(selectedVoice == nil && !isCreatingNew ? .white : .gray)
+                .padding(12)
+                .background(
+                    selectedVoice == nil && !isCreatingNew ?
+                    Color(hex: "#22c55e").opacity(0.2) :
+                    Color.white.opacity(0.08)
+                )
+                .cornerRadius(10)
+            }
+            
+            // Existing voices
+            ForEach(dataStore.voices) { voice in
+                Button(action: {
+                    selectVoice(voice)
+                }) {
+                    HStack {
+                        Image(systemName: "mic.fill")
+                            .font(.caption)
+                        Text(voice.name)
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        if selectedVoice?.id == voice.id && !isCreatingNew {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color(hex: "#22c55e"))
+                        }
+                    }
+                    .foregroundColor(selectedVoice?.id == voice.id && !isCreatingNew ? .white : .gray)
+                    .padding(12)
+                    .background(
+                        selectedVoice?.id == voice.id && !isCreatingNew ?
+                        Color(hex: "#6366f1").opacity(0.3) :
+                        Color.white.opacity(0.08)
+                    )
+                    .cornerRadius(10)
+                }
+            }
+            
+            // Create new voice option
+            Button(action: {
+                isCreatingNew = true
+                selectedVoice = nil
+                voiceName = "New Voice"
+                voiceRate = 0.5
+                voicePitch = 1.0
+                voiceVolume = 1.0
+                selectedVoiceIdentifier = nil
+            }) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.caption)
+                    Text("Create New Voice")
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    if isCreatingNew {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color(hex: "#22c55e"))
+                    }
+                }
+                .foregroundColor(isCreatingNew ? .white : Color(hex: "#8b5cf6"))
+                .padding(12)
+                .background(
+                    isCreatingNew ?
+                    Color(hex: "#8b5cf6").opacity(0.3) :
+                    Color(hex: "#8b5cf6").opacity(0.1)
+                )
+                .cornerRadius(10)
             }
         }
         .padding()
@@ -1384,13 +1434,73 @@ struct TeamVoiceSettingsView: View {
         .cornerRadius(16)
     }
     
-    // MARK: - Voice Settings Card
+    // MARK: - Voice Config Card
     
-    private var voiceSettingsCard: some View {
+    private var voiceConfigCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Voice Settings", systemImage: "slider.horizontal.3")
+            Label(isCreatingNew ? "New Voice Settings" : "Voice Settings", systemImage: "slider.horizontal.3")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
+            
+            // Voice name (only for new voices)
+            if isCreatingNew {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Voice Name")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    TextField("Enter voice name", text: $voiceName)
+                        .font(.body)
+                        .foregroundColor(.white)
+                        .padding(12)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(10)
+                }
+            }
+            
+            // System voice selection
+            VStack(alignment: .leading, spacing: 8) {
+                Text("System Voice")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        // Default announcer option
+                        Button(action: { selectedVoiceIdentifier = nil }) {
+                            VStack(spacing: 2) {
+                                Text("Announcer")
+                                    .font(.caption2.weight(.medium))
+                                Text("(Default)")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(selectedVoiceIdentifier == nil ? .white : .gray)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                selectedVoiceIdentifier == nil ?
+                                Color(hex: "#22c55e") :
+                                Color.white.opacity(0.1)
+                            )
+                            .cornerRadius(6)
+                        }
+                        
+                        ForEach(speechService.availableVoices.prefix(10), id: \.identifier) { voice in
+                            Button(action: { selectedVoiceIdentifier = voice.identifier }) {
+                                Text(voice.name.replacingOccurrences(of: " (Enhanced)", with: ""))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundColor(selectedVoiceIdentifier == voice.identifier ? .white : .gray)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        selectedVoiceIdentifier == voice.identifier ?
+                                        Color(hex: "#6366f1") :
+                                        Color.white.opacity(0.1)
+                                    )
+                                    .cornerRadius(6)
+                            }
+                        }
+                    }
+                }
+            }
             
             // Speed slider
             VStack(alignment: .leading, spacing: 8) {
@@ -1477,12 +1587,20 @@ struct TeamVoiceSettingsView: View {
     
     // MARK: - Actions
     
+    private func selectVoice(_ voice: Voice) {
+        selectedVoice = voice
+        isCreatingNew = false
+        voiceName = voice.name
+        voiceRate = voice.rate
+        voicePitch = voice.pitch
+        voiceVolume = voice.volume
+        selectedVoiceIdentifier = voice.voiceIdentifier
+    }
+    
     private func loadCurrentSettings() {
-        if let settings = event.defaultVoiceSettings {
-            voiceRate = settings.rate
-            voicePitch = settings.pitch
-            voiceVolume = settings.volume
-            selectedVoiceID = settings.voiceIdentifier
+        // Load the voice assigned to this team
+        if let voice = dataStore.voiceForTeam(event.id) {
+            selectVoice(voice)
         }
     }
     
@@ -1493,7 +1611,7 @@ struct TeamVoiceSettingsView: View {
             let settings = VoiceOverSettings(
                 enabled: true,
                 text: "Now batting, number 7, Center Field, Mickey Mantle",
-                voiceIdentifier: selectedVoiceID,
+                voiceIdentifier: selectedVoiceIdentifier,
                 rate: voiceRate,
                 pitch: voicePitch,
                 volume: voiceVolume,
@@ -1507,19 +1625,33 @@ struct TeamVoiceSettingsView: View {
     private func saveVoiceSettings() {
         speechService.stop()
         
-        var updatedEvent = event
-        updatedEvent.defaultVoiceSettings = VoiceOverSettings(
-            enabled: true,
-            text: "", // Text will be set per-player
-            voiceIdentifier: selectedVoiceID,
-            rate: voiceRate,
-            pitch: voicePitch,
-            volume: voiceVolume,
-            preDelay: 0,
-            postDelay: 0.5
-        )
+        if isCreatingNew {
+            // Create a new voice and assign it to the team
+            let newVoice = Voice(
+                name: voiceName.isEmpty ? "New Voice" : voiceName,
+                voiceIdentifier: selectedVoiceIdentifier,
+                rate: voiceRate,
+                pitch: voicePitch,
+                volume: voiceVolume,
+                preDelay: 0,
+                postDelay: 0.5
+            )
+            dataStore.addVoice(newVoice)
+            dataStore.assignVoiceToTeam(voiceID: newVoice.id, teamID: event.id)
+        } else if let voice = selectedVoice {
+            // Update existing voice settings
+            var updatedVoice = voice
+            updatedVoice.voiceIdentifier = selectedVoiceIdentifier
+            updatedVoice.rate = voiceRate
+            updatedVoice.pitch = voicePitch
+            updatedVoice.volume = voiceVolume
+            dataStore.updateVoice(updatedVoice)
+            dataStore.assignVoiceToTeam(voiceID: voice.id, teamID: event.id)
+        } else {
+            // No voice selected - remove voice assignment
+            dataStore.assignVoiceToTeam(voiceID: nil, teamID: event.id)
+        }
         
-        dataStore.updateEvent(updatedEvent)
         dismiss()
     }
 }

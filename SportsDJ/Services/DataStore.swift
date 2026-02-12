@@ -16,6 +16,7 @@ class DataStore: ObservableObject {
     @Published var categories: [Category] = []
     @Published var teamEvents: [TeamEvent] = []
     @Published var players: [Player] = []
+    @Published var voices: [Voice] = []
     @Published var selectedEventID: UUID?
     @Published var defaultSettings: DefaultSongSettings = DefaultSongSettings()
     
@@ -23,6 +24,7 @@ class DataStore: ObservableObject {
     private let categoriesKey = "categories"
     private let eventsKey = "events"
     private let playersKey = "players"
+    private let voicesKey = "voices"
     private let selectedEventKey = "selectedEvent"
     private let defaultSettingsKey = "defaultSongSettings"
     
@@ -56,13 +58,24 @@ class DataStore: ObservableObject {
         
         if categories.isEmpty {
             categories = [
-                Category(name: "Goals", colorHex: "#34C759", iconName: "sportscourt.fill"),
-                Category(name: "Penalties", colorHex: "#FF3B30", iconName: "exclamationmark.triangle.fill"),
-                Category(name: "Timeouts", colorHex: "#FF9500", iconName: "pause.circle.fill"),
-                Category(name: "Warmup", colorHex: "#007AFF", iconName: "flame.fill"),
-                Category(name: "Celebrations", colorHex: "#AF52DE", iconName: "party.popper.fill")
+                Category(name: "First Category", colorHex: "#6366f1", iconName: "star.fill")
             ]
             saveCategories()
+        }
+        
+        // Create default voice for new users
+        if voices.isEmpty {
+            let defaultVoice = Voice(
+                name: "Stadium Announcer",
+                voiceIdentifier: nil, // Uses SpeechService's best announcer voice
+                rate: 0.5,
+                pitch: 1.0,
+                volume: 1.0,
+                preDelay: 0,
+                postDelay: 0.5
+            )
+            voices.append(defaultVoice)
+            saveVoices()
         }
     }
     
@@ -204,6 +217,47 @@ class DataStore: ObservableObject {
         saveEvents()
     }
     
+    // MARK: - Voice Methods
+    
+    func addVoice(_ voice: Voice) {
+        voices.append(voice)
+        saveVoices()
+    }
+    
+    func updateVoice(_ voice: Voice) {
+        if let index = voices.firstIndex(where: { $0.id == voice.id }) {
+            voices[index] = voice
+            saveVoices()
+        }
+    }
+    
+    func deleteVoice(_ voice: Voice) {
+        // Remove voice reference from any teams using it
+        for i in teamEvents.indices {
+            if teamEvents[i].voiceID == voice.id {
+                teamEvents[i].voiceID = nil
+            }
+        }
+        voices.removeAll { $0.id == voice.id }
+        saveVoices()
+        saveEvents()
+    }
+    
+    // Get voice for a specific team/lineup
+    func voiceForTeam(_ teamID: UUID) -> Voice? {
+        guard let team = teamEvents.first(where: { $0.id == teamID }),
+              let voiceID = team.voiceID else { return nil }
+        return voices.first(where: { $0.id == voiceID })
+    }
+    
+    // Assign a voice to a team/lineup
+    func assignVoiceToTeam(voiceID: UUID?, teamID: UUID) {
+        if let index = teamEvents.firstIndex(where: { $0.id == teamID }) {
+            teamEvents[index].voiceID = voiceID
+            saveEvents()
+        }
+    }
+    
     // MARK: - Player/Lineup Methods
     
     func addPlayer(_ player: Player) -> Player {
@@ -258,25 +312,18 @@ class DataStore: ObservableObject {
     
     // Create announcement sound for a player
     func createAnnouncementSound(for player: Player, voiceSettings: VoiceOverSettings? = nil) -> SoundButton {
-        // Get team's default voice settings if no custom settings provided
-        let teamVoiceSettings = teamEvents.first(where: { $0.id == player.teamEventID })?.defaultVoiceSettings
+        let teamVoice = voiceForTeam(player.teamEventID)
         
         let settings: VoiceOverSettings
         if let customSettings = voiceSettings {
-            // Use custom settings provided
             settings = customSettings
-        } else if let teamSettings = teamVoiceSettings {
-            // Inherit from team settings, but set the text for this player
-            var inherited = teamSettings
-            inherited.text = player.announcementText
-            inherited.enabled = true
-            settings = inherited
+        } else if let voice = teamVoice {
+            settings = voice.toVoiceOverSettings(text: player.announcementText)
         } else {
-            // Default settings (uses SpeechService's defaultAnnouncerVoice)
             settings = VoiceOverSettings(
                 enabled: true,
                 text: player.announcementText,
-                voiceIdentifier: nil, // nil = use SpeechService's best announcer voice
+                voiceIdentifier: nil,
                 rate: 0.5,
                 pitch: 1.0,
                 volume: 1.0,
@@ -285,18 +332,19 @@ class DataStore: ObservableObject {
             )
         }
         
-        // Ensure text is set correctly
         var finalSettings = settings
         if finalSettings.text.isEmpty {
             finalSettings.text = player.announcementText
         }
         
+        let hasSong = player.hasSong
+        
         let sound = SoundButton(
             name: "📢 \(player.name)",
-            songPersistentID: 0,
-            spotifyURI: nil,
-            musicSource: .appleMusic,
-            startTimeSeconds: 0,
+            songPersistentID: player.songPersistentID ?? 0,
+            spotifyURI: player.spotifyURI,
+            musicSource: player.musicSource ?? .appleMusic,
+            startTimeSeconds: player.songStartTimeSeconds,
             categoryTags: ["Lineup"],
             colorHex: "#22c55e",
             order: buttons.count,
@@ -304,7 +352,8 @@ class DataStore: ObservableObject {
             fadeOutEnabled: false,
             fadeOutDuration: 0,
             voiceOver: finalSettings,
-            isVoiceOnly: true
+            isVoiceOnly: !hasSong,
+            isLineupAnnouncement: hasSong
         )
         
         return sound
@@ -326,6 +375,41 @@ class DataStore: ObservableObject {
         savePlayers()
         
         return newPlayer
+    }
+    
+    func updatePlayerSound(_ player: Player) {
+        guard let soundID = player.announcementSoundID,
+              let soundIndex = buttons.firstIndex(where: { $0.id == soundID }) else { return }
+        
+        let teamVoice = voiceForTeam(player.teamEventID)
+        let settings: VoiceOverSettings
+        if let voice = teamVoice {
+            settings = voice.toVoiceOverSettings(text: player.announcementText)
+        } else {
+            settings = VoiceOverSettings(
+                enabled: true,
+                text: player.announcementText,
+                voiceIdentifier: nil,
+                rate: 0.5,
+                pitch: 1.0,
+                volume: 1.0,
+                preDelay: 0,
+                postDelay: 0.5
+            )
+        }
+        
+        let hasSong = player.hasSong
+        
+        buttons[soundIndex].name = "📢 \(player.name)"
+        buttons[soundIndex].songPersistentID = player.songPersistentID ?? 0
+        buttons[soundIndex].spotifyURI = player.spotifyURI
+        buttons[soundIndex].musicSource = player.musicSource ?? .appleMusic
+        buttons[soundIndex].startTimeSeconds = player.songStartTimeSeconds
+        buttons[soundIndex].voiceOver = settings
+        buttons[soundIndex].isVoiceOnly = !hasSong
+        buttons[soundIndex].isLineupAnnouncement = hasSong
+        
+        saveButtons()
     }
     
     // MARK: - Default Settings Methods
@@ -361,6 +445,12 @@ class DataStore: ObservableObject {
         }
     }
     
+    private func saveVoices() {
+        if let encoded = try? JSONEncoder().encode(voices) {
+            UserDefaults.standard.set(encoded, forKey: voicesKey)
+        }
+    }
+    
     private func saveDefaultSettings() {
         if let encoded = try? JSONEncoder().encode(defaultSettings) {
             UserDefaults.standard.set(encoded, forKey: defaultSettingsKey)
@@ -386,6 +476,11 @@ class DataStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: playersKey),
            let decoded = try? JSONDecoder().decode([Player].self, from: data) {
             players = decoded
+        }
+        
+        if let data = UserDefaults.standard.data(forKey: voicesKey),
+           let decoded = try? JSONDecoder().decode([Voice].self, from: data) {
+            voices = decoded
         }
         
         if let eventIDString = UserDefaults.standard.string(forKey: selectedEventKey) {

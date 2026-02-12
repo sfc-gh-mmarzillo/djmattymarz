@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var isEditMode = false
     @State private var showLineupOCR = false
     @State private var showAddPlayer = false
+    @State private var showingVoicesView = false
     
     // Filter out Lineup sounds from main grid - they show in batting order
     var filteredButtons: [SoundButton] {
@@ -79,6 +80,9 @@ struct ContentView: View {
                             Label("Bulk Import", systemImage: "square.stack.3d.up")
                         }
                         Divider()
+                        Button(action: { showingVoicesView = true }) {
+                            Label("Manage Voices", systemImage: "mic.fill")
+                        }
                         Button(action: { showingManageView = true }) {
                             Label("Manage Teams & Categories", systemImage: "slider.horizontal.3")
                         }
@@ -99,6 +103,9 @@ struct ContentView: View {
             }
             .sheet(item: $editingButton) { button in
                 EditButtonView(button: button)
+            }
+            .sheet(isPresented: $showingVoicesView) {
+                VoicesManagementView()
             }
         }
     }
@@ -209,14 +216,8 @@ struct ContentView: View {
     var mainContentArea: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Sound buttons section
-                if dataStore.buttons.isEmpty {
-                    soundsEmptyState
-                } else if filteredButtons.isEmpty {
-                    noMatchingSoundsState
-                } else {
-                    soundButtonsGrid
-                }
+                // Sound buttons section - always shows grid with Add Sound button
+                soundButtonsSection
                 
                 // Batting Order Section - always visible
                 battingOrderSection
@@ -224,6 +225,17 @@ struct ContentView: View {
             .padding(.top, 16)
         }
     }
+    
+    // MARK: - Sound Buttons Section (always includes Add Sound button)
+    
+    var soundButtonsSection: some View {
+        VStack(spacing: 12) {
+            // Always show the grid - Add Sound button is always visible
+            soundButtonsGrid
+        }
+    }
+    
+
     
     // MARK: - Sound Buttons Grid
     
@@ -267,80 +279,6 @@ struct ContentView: View {
         .padding(.horizontal, 16)
     }
     
-    // MARK: - Sounds Empty State (compact version)
-    
-    var soundsEmptyState: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "#6366f1").opacity(0.1))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 35))
-                    .foregroundColor(Color(hex: "#6366f1"))
-            }
-            
-            VStack(spacing: 6) {
-                Text("No Sound Buttons Yet")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                
-                Text("Tap + to add your first sound")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-            }
-            
-            Button(action: { showingAddButton = true }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                    Text("Add Sound")
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(20)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 16)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(16)
-        .padding(.horizontal, 16)
-    }
-    
-    var noMatchingSoundsState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 30))
-                .foregroundColor(.gray)
-            
-            Text("No sounds in this category")
-                .font(.subheadline)
-                .foregroundColor(.white)
-            
-            Text("Try selecting a different filter")
-                .font(.caption)
-                .foregroundColor(.gray)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 16)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(16)
-        .padding(.horizontal, 16)
-    }
-
-
     // MARK: - Batting Order Section
     
     var battingOrderSection: some View {
