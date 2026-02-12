@@ -12,8 +12,8 @@ struct AddPlayerView: View {
     @State private var position: String = ""
     @State private var selectedSong: MPMediaItem?
     @State private var spotifyTrack: SpotifyTrack?
-    @State private var musicSource: MusicSource = .appleMusic
     @State private var startTimeSeconds: Double = 0
+    @State private var songDuration: Double = 0
     @State private var showSongPicker = false
     
     private var teamVoice: Voice? {
@@ -52,7 +52,6 @@ struct AddPlayerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        audioPlayer.stopPreview()
                         speechService.stop()
                         dismiss()
                     }
@@ -70,8 +69,11 @@ struct AddPlayerView: View {
             .sheet(isPresented: $showSongPicker) {
                 SongPickerView(
                     selectedSong: $selectedSong,
-                    selectedSpotifyTrack: $spotifyTrack,
-                    selectedSource: $musicSource
+                    songDuration: $songDuration,
+                    onSpotifySelect: { track in
+                        spotifyTrack = track
+                        songDuration = track.duration
+                    }
                 )
             }
         }
@@ -236,37 +238,6 @@ struct AddPlayerView: View {
                 
                 Slider(value: $startTimeSeconds, in: 0...max(songDuration - 1, 1))
                     .tint(Color(hex: "#6366f1"))
-                
-                HStack {
-                    Button(action: { startTimeSeconds = max(0, startTimeSeconds - 5) }) {
-                        Image(systemName: "gobackward.5")
-                            .font(.caption)
-                            .foregroundColor(Color(hex: "#6366f1"))
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: previewSong) {
-                        HStack(spacing: 4) {
-                            Image(systemName: audioPlayer.isPreviewing ? "stop.fill" : "play.fill")
-                            Text(audioPlayer.isPreviewing ? "Stop" : "Preview")
-                        }
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color(hex: "#6366f1"))
-                        .cornerRadius(16)
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: { startTimeSeconds = min(songDuration - 1, startTimeSeconds + 5) }) {
-                        Image(systemName: "goforward.5")
-                            .font(.caption)
-                            .foregroundColor(Color(hex: "#6366f1"))
-                    }
-                }
             }
             .padding(12)
             .background(Color.white.opacity(0.08))
@@ -337,15 +308,6 @@ struct AddPlayerView: View {
         selectedSong != nil || spotifyTrack != nil
     }
     
-    private var songDuration: Double {
-        if let song = selectedSong {
-            return song.playbackDuration
-        } else if let track = spotifyTrack {
-            return track.duration
-        }
-        return 0
-    }
-    
     private var announcementText: String {
         guard let playerNumber = Int(number), !name.isEmpty else {
             return "Now batting, number [NUMBER], [NAME]"
@@ -366,20 +328,10 @@ struct AddPlayerView: View {
     }
     
     private func clearSong() {
-        audioPlayer.stopPreview()
         selectedSong = nil
         spotifyTrack = nil
         startTimeSeconds = 0
-    }
-    
-    private func previewSong() {
-        if audioPlayer.isPreviewing {
-            audioPlayer.stopPreview()
-        } else if let song = selectedSong {
-            audioPlayer.playPreview(song: song, startTime: startTimeSeconds)
-        } else if let track = spotifyTrack {
-            audioPlayer.playSpotifyPreview(track: track, startTime: startTimeSeconds)
-        }
+        songDuration = 0
     }
     
     private func previewAnnouncement() {
@@ -409,7 +361,6 @@ struct AddPlayerView: View {
         guard let playerNumber = Int(number),
               let currentEventID = dataStore.selectedEventID else { return }
         
-        audioPlayer.stopPreview()
         speechService.stop()
         
         let player = Player(
