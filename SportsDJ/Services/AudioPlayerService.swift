@@ -19,6 +19,8 @@ class AudioPlayerService: ObservableObject {
     private let musicPlayer = MPMusicPlayerController.applicationMusicPlayer
     private let spotifyService = SpotifyService.shared
     private let speechService = SpeechService.shared
+    private let elevenLabsService = ElevenLabsService.shared
+    private var elevenLabsPlayer: AVAudioPlayer?
     private var timer: Timer?
     private var fadeTimer: Timer?
     private var targetStartTime: Double = 0
@@ -201,7 +203,7 @@ class AudioPlayerService: ObservableObject {
         isSpeakingVoiceOver = true
         isPlaying = true
         
-        speechService.speak(settings: voiceOver) { [weak self] in
+        speakWithBestVoice(text: voiceOver.text, settings: voiceOver) { [weak self] in
             DispatchQueue.main.async {
                 self?.isSpeakingVoiceOver = false
                 self?.isPlaying = false
@@ -217,11 +219,62 @@ class AudioPlayerService: ObservableObject {
         isSpeakingVoiceOver = true
         isPlaying = true
         
-        speechService.speak(settings: voiceOver, completion: nil)
+        speakWithBestVoice(text: voiceOver.text, settings: voiceOver, completion: nil)
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.playMusicWithFadeIn(button: button, fadeInDuration: 1.0)
         }
+    }
+    
+    // MARK: - Intelligent Voice Selection (ElevenLabs or iOS)
+    
+    private func speakWithBestVoice(text: String, settings: VoiceOverSettings, completion: (() -> Void)?) {
+        // Check if ElevenLabs is configured and we should use it
+        // For now, we use iOS voices for regular VoiceOverSettings
+        // ElevenLabs is used when Voice model specifies it
+        speechService.speak(settings: settings, completion: completion)
+    }
+    
+    func playElevenLabsAnnouncement(text: String, voiceId: String, completion: (() -> Void)?) {
+        isSpeakingVoiceOver = true
+        
+        elevenLabsService.generateSpeech(text: text, voiceId: voiceId) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let audioURL):
+                    self?.playElevenLabsAudio(url: audioURL, completion: completion)
+                case .failure(let error):
+                    print("ElevenLabs error, falling back to iOS: \(error)")
+                    // Fallback to iOS TTS
+                    let settings = VoiceOverSettings(enabled: true, text: text)
+                    self?.speechService.speak(settings: settings, completion: completion)
+                }
+            }
+        }
+    }
+    
+    private func playElevenLabsAudio(url: URL, completion: (() -> Void)?) {
+        do {
+            elevenLabsPlayer = try AVAudioPlayer(contentsOf: url)
+            elevenLabsPlayer?.volume = 1.0
+            elevenLabsPlayer?.play()
+            
+            // Monitor for completion
+            let duration = elevenLabsPlayer?.duration ?? 3.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1) { [weak self] in
+                self?.isSpeakingVoiceOver = false
+                completion?()
+            }
+        } catch {
+            print("Error playing ElevenLabs audio: \(error)")
+            isSpeakingVoiceOver = false
+            completion?()
+        }
+    }
+    
+    func stopElevenLabsAudio() {
+        elevenLabsPlayer?.stop()
+        elevenLabsPlayer = nil
     }
     
     // MARK: - Music with Fade In
@@ -434,8 +487,9 @@ class AudioPlayerService: ObservableObject {
         // Restore volume if it was changed
         restoreVolume()
         
-        // Stop speech service
+        // Stop speech service and ElevenLabs
         speechService.stop()
+        stopElevenLabsAudio()
         
         // Stop both players to be safe
         musicPlayer.stop()

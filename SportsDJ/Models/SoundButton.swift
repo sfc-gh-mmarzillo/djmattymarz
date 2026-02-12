@@ -19,25 +19,37 @@ struct VoiceOverSettings: Codable, Equatable, Hashable {
     var postDelay: Double = 0.5 // seconds after speaking before song starts
 }
 
+// MARK: - Voice Type (iOS TTS vs ElevenLabs)
+enum VoiceType: String, Codable {
+    case system = "system"     // iOS AVSpeechSynthesizer
+    case elevenLabs = "elevenLabs"
+}
+
 // MARK: - Voice Model (reusable announcer voice configuration)
 struct Voice: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String // User-friendly name like "Stadium Announcer", "Casual Voice"
-    var voiceIdentifier: String? = nil // nil = use SpeechService's best announcer voice
-    var rate: Float = 0.5  // 0.0-1.0
-    var pitch: Float = 1.0 // 0.5-2.0
+    var voiceType: VoiceType = .system // Which TTS engine to use
+    var voiceIdentifier: String? = nil // iOS voice ID or ElevenLabs voice ID
+    var rate: Float = 0.5  // 0.0-1.0 (only for system voices)
+    var pitch: Float = 1.0 // 0.5-2.0 (only for system voices)
     var volume: Float = 1.0 // 0.0-1.0
     var preDelay: Double = 0 // seconds before speaking
     var postDelay: Double = 0.5 // seconds after speaking
     
-    init(name: String, voiceIdentifier: String? = nil, rate: Float = 0.5, pitch: Float = 1.0, volume: Float = 1.0, preDelay: Double = 0, postDelay: Double = 0.5) {
+    init(name: String, voiceType: VoiceType = .system, voiceIdentifier: String? = nil, rate: Float = 0.5, pitch: Float = 1.0, volume: Float = 1.0, preDelay: Double = 0, postDelay: Double = 0.5) {
         self.name = name
+        self.voiceType = voiceType
         self.voiceIdentifier = voiceIdentifier
         self.rate = rate
         self.pitch = pitch
         self.volume = volume
         self.preDelay = preDelay
         self.postDelay = postDelay
+    }
+    
+    var isElevenLabs: Bool {
+        voiceType == .elevenLabs
     }
     
     // Convert to VoiceOverSettings for use with a specific announcement text

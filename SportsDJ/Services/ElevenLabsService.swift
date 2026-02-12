@@ -1,0 +1,307 @@
+import Foundation
+import AVFoundation
+
+class ElevenLabsService: ObservableObject {
+    static let shared = ElevenLabsService()
+    
+    @Published var isConfigured: Bool = false
+    @Published var isGenerating: Bool = false
+    @Published var monthlyUsage: Int = 0
+    @Published var availableVoices: [ElevenLabsVoice] = []
+    
+    private let maxMonthlyGenerations = 100
+    private let fileManager = FileManager.default
+    private var audioPlayer: AVAudioPlayer?
+    
+    private let defaultVoices: [ElevenLabsVoice] = [
+        ElevenLabsVoice(id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, professional male voice - great for announcements"),
+        ElevenLabsVoice(id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Well-rounded male voice"),
+        ElevenLabsVoice(id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Deep, powerful male voice"),
+        ElevenLabsVoice(id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", description: "Young, dynamic male voice"),
+        ElevenLabsVoice(id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Deep, authoritative male voice - ideal for sports"),
+        ElevenLabsVoice(id: "ODq5zmih8GrVes37Dizd", name: "Patrick", description: "Booming announcer voice"),
+        ElevenLabsVoice(id: "nPczCjzI2devNBz1zQrb", name: "Brian", description: "Deep American male voice"),
+        ElevenLabsVoice(id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum", description: "Transatlantic male voice")
+    ]
+    
+    private var apiKey: String? {
+        get { UserDefaults.standard.string(forKey: "elevenlabs_api_key") }
+        set { 
+            UserDefaults.standard.set(newValue, forKey: "elevenlabs_api_key")
+            isConfigured = newValue != nil && !newValue!.isEmpty
+        }
+    }
+    
+    private var cacheDirectory: URL {
+        let paths = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
+        let cacheDir = paths[0].appendingPathComponent("ElevenLabsCache")
+        if !fileManager.fileExists(atPath: cacheDir.path) {
+            try? fileManager.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        }
+        return cacheDir
+    }
+    
+    private var usageKey: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return "elevenlabs_usage_\(formatter.string(from: Date()))"
+    }
+    
+    init() {
+        isConfigured = apiKey != nil && !apiKey!.isEmpty
+        loadMonthlyUsage()
+        availableVoices = defaultVoices
+    }
+    
+    func setAPIKey(_ key: String) {
+        apiKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isConfigured {
+            fetchVoices()
+        }
+    }
+    
+    func getAPIKey() -> String? {
+        return apiKey
+    }
+    
+    func clearAPIKey() {
+        apiKey = nil
+    }
+    
+    var canGenerate: Bool {
+        return isConfigured && monthlyUsage < maxMonthlyGenerations
+    }
+    
+    var remainingGenerations: Int {
+        return max(0, maxMonthlyGenerations - monthlyUsage)
+    }
+    
+    private func loadMonthlyUsage() {
+        monthlyUsage = UserDefaults.standard.integer(forKey: usageKey)
+    }
+    
+    private func incrementUsage() {
+        monthlyUsage += 1
+        UserDefaults.standard.set(monthlyUsage, forKey: usageKey)
+    }
+    
+    func getCacheKey(text: String, voiceId: String) -> String {
+        let combined = "\(text)_\(voiceId)"
+        let data = Data(combined.utf8)
+        return data.base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .prefix(50) + ".mp3"
+    }
+    
+    func getCachedAudioURL(text: String, voiceId: String) -> URL? {
+        let filename = getCacheKey(text: text, voiceId: voiceId)
+        let fileURL = cacheDirectory.appendingPathComponent(String(filename))
+        if fileManager.fileExists(atPath: fileURL.path) {
+            return fileURL
+        }
+        return nil
+    }
+    
+    func generateSpeech(text: String, voiceId: String, completion: @escaping (Result<URL, Error>) -> Void) {
+        if let cachedURL = getCachedAudioURL(text: text, voiceId: voiceId) {
+            completion(.success(cachedURL))
+            return
+        }
+        
+        guard let key = apiKey, !key.isEmpty else {
+            completion(.failure(ElevenLabsError.notConfigured))
+            return
+        }
+        
+        guard canGenerate else {
+            completion(.failure(ElevenLabsError.usageLimitReached))
+            return
+        }
+        
+        isGenerating = true
+        
+        let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceId)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue(key, forHTTPHeaderField: "xi-api-key")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue("audio/mpeg", forHTTPHeaderField: "Accept")
+        
+        let body: [String: Any] = [
+            "text": text,
+            "model_id": "eleven_monolingual_v1",
+            "voice_settings": [
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+                "style": 0.3,
+                "use_speaker_boost": true
+            ]
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                self?.isGenerating = false
+                
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(.failure(ElevenLabsError.invalidResponse))
+                    return
+                }
+                
+                guard httpResponse.statusCode == 200 else {
+                    if httpResponse.statusCode == 401 {
+                        completion(.failure(ElevenLabsError.invalidAPIKey))
+                    } else if httpResponse.statusCode == 429 {
+                        completion(.failure(ElevenLabsError.rateLimited))
+                    } else {
+                        completion(.failure(ElevenLabsError.apiError(httpResponse.statusCode)))
+                    }
+                    return
+                }
+                
+                guard let audioData = data else {
+                    completion(.failure(ElevenLabsError.noData))
+                    return
+                }
+                
+                let filename = self?.getCacheKey(text: text, voiceId: voiceId) ?? "temp.mp3"
+                let fileURL = self?.cacheDirectory.appendingPathComponent(String(filename)) ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
+                
+                do {
+                    try audioData.write(to: fileURL)
+                    self?.incrementUsage()
+                    completion(.success(fileURL))
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
+    }
+    
+    func previewVoice(voiceId: String, text: String = "Now batting, number 7, Center Field, Mickey Mantle") {
+        generateSpeech(text: text, voiceId: voiceId) { [weak self] result in
+            switch result {
+            case .success(let url):
+                self?.playAudio(url: url)
+            case .failure(let error):
+                print("ElevenLabs preview error: \(error)")
+            }
+        }
+    }
+    
+    private func playAudio(url: URL) {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+            
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.play()
+        } catch {
+            print("Audio playback error: \(error)")
+        }
+    }
+    
+    func stopAudio() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+    }
+    
+    func clearCache() {
+        try? fileManager.removeItem(at: cacheDirectory)
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+    }
+    
+    func getCacheSize() -> String {
+        guard let files = try? fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return "0 KB"
+        }
+        
+        var totalSize: Int64 = 0
+        for file in files {
+            if let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                totalSize += Int64(size)
+            }
+        }
+        
+        if totalSize < 1024 {
+            return "\(totalSize) B"
+        } else if totalSize < 1024 * 1024 {
+            return "\(totalSize / 1024) KB"
+        } else {
+            return String(format: "%.1f MB", Double(totalSize) / 1024 / 1024)
+        }
+    }
+    
+    private func fetchVoices() {
+        guard let key = apiKey else { return }
+        
+        let url = URL(string: "https://api.elevenlabs.io/v1/voices")!
+        var request = URLRequest(url: url)
+        request.addValue(key, forHTTPHeaderField: "xi-api-key")
+        
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let voices = json["voices"] as? [[String: Any]] else {
+                return
+            }
+            
+            let fetchedVoices = voices.compactMap { voice -> ElevenLabsVoice? in
+                guard let id = voice["voice_id"] as? String,
+                      let name = voice["name"] as? String else {
+                    return nil
+                }
+                let description = (voice["labels"] as? [String: String])?["description"] ?? ""
+                return ElevenLabsVoice(id: id, name: name, description: description)
+            }
+            
+            DispatchQueue.main.async {
+                if !fetchedVoices.isEmpty {
+                    self?.availableVoices = fetchedVoices
+                }
+            }
+        }.resume()
+    }
+}
+
+struct ElevenLabsVoice: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let description: String
+}
+
+enum ElevenLabsError: LocalizedError {
+    case notConfigured
+    case usageLimitReached
+    case invalidAPIKey
+    case rateLimited
+    case invalidResponse
+    case noData
+    case apiError(Int)
+    
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            return "ElevenLabs API key not configured"
+        case .usageLimitReached:
+            return "Monthly generation limit reached (100/month)"
+        case .invalidAPIKey:
+            return "Invalid API key"
+        case .rateLimited:
+            return "Rate limited - please wait"
+        case .invalidResponse:
+            return "Invalid response from server"
+        case .noData:
+            return "No audio data received"
+        case .apiError(let code):
+            return "API error (code \(code))"
+        }
+    }
+}
