@@ -16,14 +16,14 @@ class ElevenLabsService: ObservableObject {
     private let universalAPIKey = "sk_47a2505eb66c606b3b5f27deb6ebc7851d43cce2ce4eba20"
     
     private let defaultVoices: [ElevenLabsVoice] = [
-        ElevenLabsVoice(id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, professional male voice - great for announcements"),
-        ElevenLabsVoice(id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Well-rounded male voice"),
-        ElevenLabsVoice(id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Deep, powerful male voice"),
-        ElevenLabsVoice(id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", description: "Young, dynamic male voice"),
-        ElevenLabsVoice(id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Deep, authoritative male voice - ideal for sports"),
-        ElevenLabsVoice(id: "ODq5zmih8GrVes37Dizd", name: "Patrick", description: "Booming announcer voice"),
-        ElevenLabsVoice(id: "nPczCjzI2devNBz1zQrb", name: "Brian", description: "Deep American male voice"),
-        ElevenLabsVoice(id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum", description: "Transatlantic male voice")
+        ElevenLabsVoice(id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, professional - classic stadium announcer"),
+        ElevenLabsVoice(id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Authoritative - ideal for sports announcing"),
+        ElevenLabsVoice(id: "ODq5zmih8GrVes37Dizd", name: "Patrick", description: "Booming voice - big arena energy"),
+        ElevenLabsVoice(id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Powerful & commanding presence"),
+        ElevenLabsVoice(id: "nPczCjzI2devNBz1zQrb", name: "Brian", description: "Deep American - broadcast style"),
+        ElevenLabsVoice(id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum", description: "Transatlantic - premium sports feel"),
+        ElevenLabsVoice(id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Well-rounded - versatile announcer"),
+        ElevenLabsVoice(id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", description: "Young & dynamic energy")
     ]
     
     private var apiKey: String {
@@ -70,7 +70,8 @@ class ElevenLabsService: ObservableObject {
     }
     
     func getCacheKey(text: String, voiceId: String) -> String {
-        let combined = "\(text)_\(voiceId)"
+        // v2 cache key - invalidates old rushed audio
+        let combined = "v2_\(text)_\(voiceId)"
         let data = Data(combined.utf8)
         return data.base64EncodedString()
             .replacingOccurrences(of: "/", with: "_")
@@ -115,13 +116,16 @@ class ElevenLabsService: ObservableObject {
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("audio/mpeg", forHTTPHeaderField: "Accept")
         
+        // Format text for stadium announcer style - add pauses for dramatic effect
+        let announcerText = formatForAnnouncer(text)
+        
         let body: [String: Any] = [
-            "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "text": announcerText,
+            "model_id": "eleven_turbo_v2_5",
             "voice_settings": [
-                "stability": 0.75,
-                "similarity_boost": 0.85,
-                "style": 0.5,
+                "stability": 0.85,
+                "similarity_boost": 0.90,
+                "style": 0.65,
                 "use_speaker_boost": true
             ]
         ]
@@ -187,7 +191,31 @@ class ElevenLabsService: ObservableObject {
         }.resume()
     }
     
-    func previewVoice(voiceId: String, text: String = "Now batting, number 7, Center Field, Mickey Mantle") {
+    // Format text with pauses for dramatic stadium announcer effect
+    private func formatForAnnouncer(_ text: String) -> String {
+        var result = text
+        
+        // Add dramatic pauses after "Now batting" or "Now on deck"
+        result = result.replacingOccurrences(of: "Now batting,", with: "Now batting...")
+        result = result.replacingOccurrences(of: "Now on deck,", with: "Now on deck...")
+        
+        // Add pause after jersey number
+        let numberPattern = try? NSRegularExpression(pattern: "(number \\d+),", options: .caseInsensitive)
+        if let pattern = numberPattern {
+            result = pattern.stringByReplacingMatches(in: result, options: [], range: NSRange(result.startIndex..., in: result), withTemplate: "$1...")
+        }
+        
+        // Add pause before player name (after position)
+        let positions = ["Pitcher", "Catcher", "First Base", "Second Base", "Third Base", "Shortstop", 
+                        "Left Field", "Center Field", "Right Field", "Designated Hitter", "DH"]
+        for position in positions {
+            result = result.replacingOccurrences(of: "\(position),", with: "\(position)...")
+        }
+        
+        return result
+    }
+    
+    func previewVoice(voiceId: String, text: String = "Now batting... number 7... Center Field... Mickey Mantle!") {
         generateSpeech(text: text, voiceId: voiceId) { [weak self] result in
             switch result {
             case .success(let url):
