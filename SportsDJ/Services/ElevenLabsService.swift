@@ -4,14 +4,16 @@ import AVFoundation
 class ElevenLabsService: ObservableObject {
     static let shared = ElevenLabsService()
     
-    @Published var isConfigured: Bool = false
+    @Published var isConfigured: Bool = true
     @Published var isGenerating: Bool = false
     @Published var monthlyUsage: Int = 0
     @Published var availableVoices: [ElevenLabsVoice] = []
     
-    private let maxMonthlyGenerations = 100
+    private let maxMonthlyGenerations = 10000
     private let fileManager = FileManager.default
     private var audioPlayer: AVAudioPlayer?
+    
+    private let universalAPIKey = "sk_d011c1ac28512370e29220a0153df318062761db1b4cf641"
     
     private let defaultVoices: [ElevenLabsVoice] = [
         ElevenLabsVoice(id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, professional male voice - great for announcements"),
@@ -24,12 +26,8 @@ class ElevenLabsService: ObservableObject {
         ElevenLabsVoice(id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum", description: "Transatlantic male voice")
     ]
     
-    private var apiKey: String? {
-        get { UserDefaults.standard.string(forKey: "elevenlabs_api_key") }
-        set { 
-            UserDefaults.standard.set(newValue, forKey: "elevenlabs_api_key")
-            isConfigured = newValue != nil && !newValue!.isEmpty
-        }
+    private var apiKey: String {
+        return universalAPIKey
     }
     
     private var cacheDirectory: URL {
@@ -48,24 +46,10 @@ class ElevenLabsService: ObservableObject {
     }
     
     init() {
-        isConfigured = apiKey != nil && !apiKey!.isEmpty
+        isConfigured = true
         loadMonthlyUsage()
         availableVoices = defaultVoices
-    }
-    
-    func setAPIKey(_ key: String) {
-        apiKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isConfigured {
-            fetchVoices()
-        }
-    }
-    
-    func getAPIKey() -> String? {
-        return apiKey
-    }
-    
-    func clearAPIKey() {
-        apiKey = nil
+        fetchVoices()
     }
     
     var canGenerate: Bool {
@@ -109,10 +93,7 @@ class ElevenLabsService: ObservableObject {
             return
         }
         
-        guard let key = apiKey, !key.isEmpty else {
-            completion(.failure(ElevenLabsError.notConfigured))
-            return
-        }
+        let key = apiKey
         
         guard canGenerate else {
             completion(.failure(ElevenLabsError.usageLimitReached))
@@ -240,7 +221,7 @@ class ElevenLabsService: ObservableObject {
     }
     
     private func fetchVoices() {
-        guard let key = apiKey else { return }
+        let key = apiKey
         
         let url = URL(string: "https://api.elevenlabs.io/v1/voices")!
         var request = URLRequest(url: url)

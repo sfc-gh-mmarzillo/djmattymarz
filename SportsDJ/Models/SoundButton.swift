@@ -11,7 +11,8 @@ enum MusicSource: String, Codable {
 struct VoiceOverSettings: Codable, Equatable, Hashable {
     var enabled: Bool = false
     var text: String = ""
-    var voiceIdentifier: String? = nil // nil = default system voice
+    var voiceType: VoiceType = .system // iOS TTS vs ElevenLabs
+    var voiceIdentifier: String? = nil // nil = default system voice, or ElevenLabs voice ID
     var rate: Float = 0.5  // 0.0-1.0, AVSpeechUtterance default is ~0.5
     var pitch: Float = 1.0 // 0.5-2.0, default 1.0
     var volume: Float = 1.0 // 0.0-1.0
@@ -57,6 +58,7 @@ struct Voice: Identifiable, Codable, Hashable {
         return VoiceOverSettings(
             enabled: true,
             text: text,
+            voiceType: voiceType,
             voiceIdentifier: voiceIdentifier,
             rate: rate,
             pitch: pitch,

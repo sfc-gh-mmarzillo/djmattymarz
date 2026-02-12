@@ -8,7 +8,6 @@ struct VoicesManagementView: View {
     
     @State private var showingAddVoice = false
     @State private var editingVoice: Voice?
-    @State private var showingAPIKeySetup = false
     
     var body: some View {
         NavigationView {
@@ -55,9 +54,6 @@ struct VoicesManagementView: View {
             .sheet(item: $editingVoice) { voice in
                 EditVoiceView(voice: voice)
             }
-            .sheet(isPresented: $showingAPIKeySetup) {
-                ElevenLabsSetupView()
-            }
         }
     }
     
@@ -68,9 +64,7 @@ struct VoicesManagementView: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: elevenLabsService.isConfigured ? 
-                                    [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")] :
-                                    [Color.gray.opacity(0.5), Color.gray.opacity(0.3)],
+                                colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6")],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -87,39 +81,16 @@ struct VoicesManagementView: View {
                         .font(.headline)
                         .foregroundColor(.white)
                     
-                    if elevenLabsService.isConfigured {
-                        Text("\(elevenLabsService.remainingGenerations) generations left this month")
-                            .font(.caption)
-                            .foregroundColor(elevenLabsService.remainingGenerations < 20 ? Color(hex: "#f59e0b") : Color(hex: "#22c55e"))
-                    } else {
-                        Text("Configure API key for realistic voices")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
+                    Text("Realistic AI announcer voices enabled")
+                        .font(.caption)
+                        .foregroundColor(Color(hex: "#22c55e"))
                 }
                 
                 Spacer()
                 
-                Button(action: { showingAPIKeySetup = true }) {
-                    Text(elevenLabsService.isConfigured ? "Settings" : "Setup")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(hex: "#6366f1"))
-                        .cornerRadius(8)
-                }
-            }
-            
-            if !elevenLabsService.isConfigured {
-                HStack {
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                    Text("ElevenLabs provides human-quality AI voices. Free tier includes 10,000 characters/month.")
-                        .font(.caption2)
-                }
-                .foregroundColor(.gray)
-                .padding(.horizontal, 8)
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.title2)
+                    .foregroundColor(Color(hex: "#22c55e"))
             }
         }
         .padding(16)
@@ -128,7 +99,7 @@ struct VoicesManagementView: View {
                 .fill(Color.white.opacity(0.08))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(elevenLabsService.isConfigured ? Color(hex: "#6366f1").opacity(0.3) : Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color(hex: "#6366f1").opacity(0.3), lineWidth: 1)
                 )
         )
     }
@@ -300,260 +271,6 @@ struct AddVoiceCard: View {
     }
 }
 
-struct ElevenLabsSetupView: View {
-    @Environment(\.dismiss) var dismiss
-    @ObservedObject private var elevenLabsService = ElevenLabsService.shared
-    @State private var apiKey: String = ""
-    @State private var showingKey = false
-    @State private var testResult: String?
-    @State private var isTesting = false
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(hex: "#1a1a2e"),
-                        Color(hex: "#16213e"),
-                        Color(hex: "#0f0f23")
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        infoCard
-                        apiKeyCard
-                        usageCard
-                        cacheCard
-                    }
-                    .padding()
-                }
-            }
-            .navigationTitle("ElevenLabs Setup")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(.white)
-                }
-            }
-            .onAppear {
-                apiKey = elevenLabsService.getAPIKey() ?? ""
-            }
-        }
-    }
-    
-    private var infoCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "info.circle.fill")
-                    .foregroundColor(Color(hex: "#6366f1"))
-                Text("About ElevenLabs")
-                    .font(.headline)
-                    .foregroundColor(.white)
-            }
-            
-            Text("ElevenLabs provides ultra-realistic AI voices that sound like real human announcers. Perfect for stadium-quality player announcements.")
-                .font(.subheadline)
-                .foregroundColor(.gray)
-            
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Free tier: 10,000 characters/month", systemImage: "checkmark.circle")
-                Label("~200 player announcements/month", systemImage: "checkmark.circle")
-                Label("Generated audio is cached locally", systemImage: "checkmark.circle")
-                Label("Fallback to iOS voices when limit reached", systemImage: "checkmark.circle")
-            }
-            .font(.caption)
-            .foregroundColor(Color(hex: "#22c55e"))
-            
-            Link(destination: URL(string: "https://elevenlabs.io")!) {
-                HStack {
-                    Text("Get your free API key at elevenlabs.io")
-                        .font(.caption.weight(.medium))
-                    Image(systemName: "arrow.up.right.square")
-                }
-                .foregroundColor(Color(hex: "#6366f1"))
-            }
-        }
-        .padding()
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(16)
-    }
-    
-    private var apiKeyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("API Key", systemImage: "key.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white)
-            
-            HStack {
-                if showingKey {
-                    TextField("Paste your API key", text: $apiKey)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(.white)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                } else {
-                    SecureField("Paste your API key", text: $apiKey)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(.white)
-                }
-                
-                Button(action: { showingKey.toggle() }) {
-                    Image(systemName: showingKey ? "eye.slash" : "eye")
-                        .foregroundColor(.gray)
-                }
-            }
-            .padding(12)
-            .background(Color.white.opacity(0.08))
-            .cornerRadius(10)
-            
-            HStack(spacing: 12) {
-                Button(action: saveAPIKey) {
-                    HStack {
-                        Image(systemName: "checkmark.circle")
-                        Text("Save Key")
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(apiKey.isEmpty ? Color.gray : Color(hex: "#22c55e"))
-                    .cornerRadius(10)
-                }
-                .disabled(apiKey.isEmpty)
-                
-                if elevenLabsService.isConfigured {
-                    Button(action: clearAPIKey) {
-                        HStack {
-                            Image(systemName: "trash")
-                            Text("Remove")
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.red.opacity(0.8))
-                        .cornerRadius(10)
-                    }
-                }
-            }
-            
-            if let result = testResult {
-                Text(result)
-                    .font(.caption)
-                    .foregroundColor(result.contains("Success") ? Color(hex: "#22c55e") : .red)
-            }
-        }
-        .padding()
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(16)
-    }
-    
-    private var usageCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Usage This Month", systemImage: "chart.bar.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white)
-            
-            HStack {
-                Text("\(elevenLabsService.monthlyUsage)")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                Text("/ 100")
-                    .font(.title2)
-                    .foregroundColor(.gray)
-                Text("generations")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-            }
-            
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.1))
-                        .frame(height: 8)
-                    
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "#22c55e"), Color(hex: "#14b8a6")],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * CGFloat(elevenLabsService.monthlyUsage) / 100, height: 8)
-                }
-            }
-            .frame(height: 8)
-            
-            Text("Each player announcement uses ~1 generation. Limit resets monthly.")
-                .font(.caption)
-                .foregroundColor(.gray)
-        }
-        .padding()
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(16)
-    }
-    
-    private var cacheCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Audio Cache", systemImage: "folder.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white)
-            
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Cache Size")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    Text(elevenLabsService.getCacheSize())
-                        .font(.headline)
-                        .foregroundColor(.white)
-                }
-                
-                Spacer()
-                
-                Button(action: {
-                    elevenLabsService.clearCache()
-                }) {
-                    HStack {
-                        Image(systemName: "trash")
-                        Text("Clear Cache")
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.red)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(8)
-                }
-            }
-            
-            Text("Cached audio prevents regeneration and saves your quota.")
-                .font(.caption)
-                .foregroundColor(.gray)
-        }
-        .padding()
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(16)
-    }
-    
-    private func saveAPIKey() {
-        elevenLabsService.setAPIKey(apiKey)
-        testResult = elevenLabsService.isConfigured ? "Success! API key saved." : "Invalid API key"
-    }
-    
-    private func clearAPIKey() {
-        elevenLabsService.clearAPIKey()
-        apiKey = ""
-        testResult = "API key removed"
-    }
-}
-
 struct EditVoiceView: View {
     @EnvironmentObject var dataStore: DataStore
     @Environment(\.dismiss) var dismiss
@@ -686,36 +403,26 @@ struct EditVoiceView: View {
                     .cornerRadius(12)
                 }
                 
-                Button(action: { 
-                    if elevenLabsService.isConfigured {
-                        voiceType = .elevenLabs
-                    }
-                }) {
+                Button(action: { voiceType = .elevenLabs }) {
                     VStack(spacing: 8) {
                         Image(systemName: "waveform")
                             .font(.title2)
                         Text("ElevenLabs")
                             .font(.caption.weight(.medium))
-                        Text(elevenLabsService.isConfigured ? "AI Voice" : "Not Setup")
+                        Text("AI Voice")
                             .font(.caption2)
                             .foregroundColor(.gray)
                     }
-                    .foregroundColor(voiceType == .elevenLabs ? .white : elevenLabsService.isConfigured ? .gray : .gray.opacity(0.5))
+                    .foregroundColor(voiceType == .elevenLabs ? .white : .gray)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(
                         voiceType == .elevenLabs ?
                         Color(hex: "#6366f1") :
-                        Color.white.opacity(elevenLabsService.isConfigured ? 0.08 : 0.03)
+                        Color.white.opacity(0.08)
                     )
                     .cornerRadius(12)
-                    .overlay(
-                        !elevenLabsService.isConfigured ?
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [5])) : nil
-                    )
                 }
-                .disabled(!elevenLabsService.isConfigured)
             }
         }
         .padding()

@@ -229,10 +229,11 @@ class AudioPlayerService: ObservableObject {
     // MARK: - Intelligent Voice Selection (ElevenLabs or iOS)
     
     private func speakWithBestVoice(text: String, settings: VoiceOverSettings, completion: (() -> Void)?) {
-        // Check if ElevenLabs is configured and we should use it
-        // For now, we use iOS voices for regular VoiceOverSettings
-        // ElevenLabs is used when Voice model specifies it
-        speechService.speak(settings: settings, completion: completion)
+        if settings.voiceType == .elevenLabs, let voiceId = settings.voiceIdentifier {
+            playElevenLabsAnnouncement(text: text, voiceId: voiceId, completion: completion)
+        } else {
+            speechService.speak(settings: settings, completion: completion)
+        }
     }
     
     func playElevenLabsAnnouncement(text: String, voiceId: String, completion: (() -> Void)?) {
@@ -327,7 +328,7 @@ class AudioPlayerService: ObservableObject {
     }
     
     private func fadeInMusic(duration: Double) {
-        let fadeSteps = 20
+        let fadeSteps = 30
         let stepDuration = duration / Double(fadeSteps)
         var currentStep = 0
         
@@ -338,8 +339,9 @@ class AudioPlayerService: ObservableObject {
             }
             
             currentStep += 1
-            let progress = Double(currentStep) / Double(fadeSteps)
-            let newVolume = self.initialVolume * Float(progress)
+            let linearProgress = Double(currentStep) / Double(fadeSteps)
+            let easedProgress = 1.0 - pow(1.0 - linearProgress, 2.5)
+            let newVolume = self.initialVolume * Float(easedProgress)
             
             self.setSystemVolume(newVolume)
             
