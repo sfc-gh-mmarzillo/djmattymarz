@@ -487,10 +487,6 @@ struct EditVoiceView: View {
                     .foregroundColor(.white)
                 
                 Spacer()
-                
-                Text("\(elevenLabsService.remainingGenerations) left")
-                    .font(.caption)
-                    .foregroundColor(Color(hex: "#22c55e"))
             }
             
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {

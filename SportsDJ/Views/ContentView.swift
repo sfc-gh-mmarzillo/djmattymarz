@@ -327,11 +327,14 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                // Add Voice button
-                AddVoiceButton {
-                    showingVoicesView = true
+                // Add Voice button (only show if no voice assigned)
+                if let eventID = dataStore.selectedEventID,
+                   dataStore.voiceForTeam(eventID) == nil {
+                    AddVoiceButton {
+                        showingVoicesView = true
+                    }
+                    .padding(.trailing, 4)
                 }
-                .padding(.trailing, 4)
                 
                 // Import from screenshot
                 Button(action: { showLineupOCR = true }) {
