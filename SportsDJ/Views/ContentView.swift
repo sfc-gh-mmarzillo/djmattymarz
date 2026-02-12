@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var showLineupOCR = false
     @State private var showAddPlayer = false
     @State private var showingVoicesView = false
+    @State private var manageViewTab: ManageView.ManageTab = .events
     
     // Filter out Lineup sounds from main grid - they show in batting order
     var filteredButtons: [SoundButton] {
@@ -99,7 +100,7 @@ struct ContentView: View {
                 BulkImportView()
             }
             .sheet(isPresented: $showingManageView) {
-                ManageView()
+                ManageView(initialTab: manageViewTab)
             }
             .sheet(item: $editingButton) { button in
                 EditButtonView(button: button)
@@ -182,6 +183,7 @@ struct ContentView: View {
                         .lineLimit(1)
                 }
                 .onTapGesture {
+                    manageViewTab = .events
                     showingManageView = true
                 }
             }
@@ -212,6 +214,7 @@ struct ContentView: View {
                 
                 // Add Category Button
                 AddCategoryChip {
+                    manageViewTab = .categories
                     showingManageView = true
                 }
             }
@@ -308,21 +311,23 @@ struct ContentView: View {
                     .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 
-                // Show assigned voice
+                // Show assigned voice (tappable to change)
                 if let eventID = dataStore.selectedEventID,
                    let voice = dataStore.voiceForTeam(eventID) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "mic.fill")
-                            .font(.caption2)
-                            .foregroundColor(Color(hex: "#8b5cf6"))
-                        Text(voice.name)
-                            .font(.caption)
-                            .foregroundColor(Color(hex: "#8b5cf6"))
+                    Button(action: { showingVoicesView = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mic.fill")
+                                .font(.caption2)
+                                .foregroundColor(Color(hex: "#8b5cf6"))
+                            Text(voice.name)
+                                .font(.caption)
+                                .foregroundColor(Color(hex: "#8b5cf6"))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: "#8b5cf6").opacity(0.15))
+                        .cornerRadius(8)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(hex: "#8b5cf6").opacity(0.15))
-                    .cornerRadius(8)
                 }
                 
                 Spacer()

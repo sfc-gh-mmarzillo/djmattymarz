@@ -4,12 +4,23 @@ struct ManageView: View {
     @EnvironmentObject var dataStore: DataStore
     @Environment(\.dismiss) var dismiss
     
+    var initialTab: ManageTab = .events
     @State private var selectedTab: ManageTab = .events
+    
+    init(initialTab: ManageTab = .events) {
+        self.initialTab = initialTab
+        _selectedTab = State(initialValue: initialTab)
+    }
     
     enum ManageTab: String, CaseIterable {
         case events = "Teams/Events"
         case categories = "Categories"
         case settings = "Settings"
+    }
+    
+    init() {
+        self.initialTab = .events
+        _selectedTab = State(initialValue: .events)
     }
     
     var body: some View {
