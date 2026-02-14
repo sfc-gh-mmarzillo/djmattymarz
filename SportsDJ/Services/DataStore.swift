@@ -250,11 +250,22 @@ class DataStore: ObservableObject {
         return voices.first(where: { $0.id == voiceID })
     }
     
-    // Assign a voice to a team/lineup
+    // Assign a voice to a team/lineup and update all existing player sounds
     func assignVoiceToTeam(voiceID: UUID?, teamID: UUID) {
         if let index = teamEvents.firstIndex(where: { $0.id == teamID }) {
             teamEvents[index].voiceID = voiceID
             saveEvents()
+            
+            // Update all existing players' announcement sounds with new voice
+            updateAllPlayerSoundsForTeam(teamID: teamID)
+        }
+    }
+    
+    // Update all player sounds when team voice changes
+    private func updateAllPlayerSoundsForTeam(teamID: UUID) {
+        let teamPlayers = players.filter { $0.teamEventID == teamID }
+        for player in teamPlayers {
+            updatePlayerSound(player)
         }
     }
     

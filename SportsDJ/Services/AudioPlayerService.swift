@@ -27,6 +27,9 @@ class AudioPlayerService: ObservableObject {
     private var hasSetStartTime: Bool = false
     private var cancellables = Set<AnyCancellable>()
     
+    // Reference to data store for dynamic voice lookup
+    weak var dataStore: DataStore?
+    
     // Fade out properties
     private var currentButton: SoundButton?
     private var initialVolume: Float = 1.0  // Volume when song started
@@ -171,14 +174,17 @@ class AudioPlayerService: ObservableObject {
         }
         
         // Check if this is a lineup announcement with song (overlapping playback)
+        // Always fetch current team voice for lineup announcements
         if button.isLineupAnnouncement, let voiceOver = button.voiceOver, voiceOver.enabled {
-            playLineupAnnouncement(button: button, voiceOver: voiceOver)
+            let liveVoiceSettings = getLiveVoiceSettings(for: button, baseSettings: voiceOver)
+            playLineupAnnouncement(button: button, voiceOver: liveVoiceSettings)
             return
         }
         
         // Check if there's a voice over to play first (sequential)
         if let voiceOver = button.voiceOver, voiceOver.enabled, !voiceOver.text.isEmpty {
-            playWithVoiceOver(button: button, voiceOver: voiceOver)
+            let liveVoiceSettings = getLiveVoiceSettings(for: button, baseSettings: voiceOver)
+            playWithVoiceOver(button: button, voiceOver: liveVoiceSettings)
             return
         }
         
@@ -190,6 +196,29 @@ class AudioPlayerService: ObservableObject {
         let audioSession = AVAudioSession.sharedInstance()
         initialVolume = audioSession.outputVolume
         print("Initial volume captured: \(initialVolume)")
+    }
+    
+    // MARK: - Dynamic Voice Lookup
+    
+    /// Fetches the current team voice settings at playback time
+    /// This ensures players always use the team's assigned voice, even if changed after player creation
+    private func getLiveVoiceSettings(for button: SoundButton, baseSettings: VoiceOverSettings) -> VoiceOverSettings {
+        // If no data store reference or no event ID, use stored settings
+        guard let dataStore = dataStore,
+              let eventID = button.eventID,
+              let teamVoice = dataStore.voiceForTeam(eventID) else {
+            print("[AudioPlayer] Using stored voice settings (no team voice found)")
+            return baseSettings
+        }
+        
+        // Build new voice settings from team's current voice
+        var liveSettings = teamVoice.toVoiceOverSettings(text: baseSettings.text)
+        liveSettings.enabled = baseSettings.enabled
+        liveSettings.preDelay = baseSettings.preDelay
+        liveSettings.postDelay = baseSettings.postDelay
+        
+        print("[AudioPlayer] Using live team voice: \(teamVoice.name), type: \(liveSettings.voiceType), id: \(liveSettings.voiceIdentifier ?? "nil")")
+        return liveSettings
     }
     
     // MARK: - Voice Only Playback (for lineup announcements without song)
@@ -213,16 +242,36 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    // MARK: - Lineup Announcement Playback (voice + song overlap)
+    // MARK: - Lineup Announcement Playback (voice + song with professional crossfade)
     
+    /// Plays lineup announcement with smooth audio transition:
+    /// 1. Voice announcement starts at full volume
+    /// 2. Music begins softly partway through announcement  
+    /// 3. Music volume rises smoothly as voice finishes
+    /// This creates the iconic stadium announcer experience
     private func playLineupAnnouncement(button: SoundButton, voiceOver: VoiceOverSettings) {
         isSpeakingVoiceOver = true
         isPlaying = true
         
-        speakWithBestVoice(text: voiceOver.text, settings: voiceOver, completion: nil)
+        print("[AudioPlayer] Starting lineup announcement with crossfade transition")
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.playMusicWithFadeIn(button: button, fadeInDuration: 1.0)
+        // For ElevenLabs, we need to estimate duration; for iOS TTS we can monitor
+        let isElevenLabs = voiceOver.voiceType == .elevenLabs && voiceOver.voiceIdentifier != nil
+        
+        if isElevenLabs {
+            // ElevenLabs: Start music 1.5 seconds after voice begins, fade in over 2 seconds
+            speakWithBestVoice(text: voiceOver.text, settings: voiceOver, completion: nil)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.playMusicWithFadeIn(button: button, fadeInDuration: 2.0)
+            }
+        } else {
+            // iOS TTS: Start music 0.8 seconds after voice begins
+            speakWithBestVoice(text: voiceOver.text, settings: voiceOver, completion: nil)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                self?.playMusicWithFadeIn(button: button, fadeInDuration: 1.5)
+            }
         }
     }
     

@@ -1626,7 +1626,7 @@ struct TeamVoiceSettingsView: View {
         } else {
             let settings = VoiceOverSettings(
                 enabled: true,
-                text: "Now batting, number 7, Center Field, Mickey Mantle",
+                text: "Now batting, number 14, First Base, Paul Konerko",
                 voiceIdentifier: selectedVoiceIdentifier,
                 rate: voiceRate,
                 pitch: voicePitch,

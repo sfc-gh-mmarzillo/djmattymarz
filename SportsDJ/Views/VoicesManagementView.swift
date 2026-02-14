@@ -218,7 +218,7 @@ struct VoiceCard: View {
             isPlaying = false
         } else {
             isPlaying = true
-            let sampleText = "Now batting, number 7, Center Field, Mickey Mantle"
+            let sampleText = "Now batting, number 14, First Base, Paul Konerko"
             
             if voice.isElevenLabs, let voiceId = voice.voiceIdentifier {
                 elevenLabsService.previewVoice(voiceId: voiceId, text: sampleText)
@@ -687,7 +687,7 @@ struct EditVoiceView: View {
     }
     
     private func previewVoice() {
-        let sampleText = "Now batting, number 7, Center Field, Mickey Mantle"
+        let sampleText = "Now batting, number 14, First Base, Paul Konerko"
         
         if isPreviewPlaying {
             speechService.stop()

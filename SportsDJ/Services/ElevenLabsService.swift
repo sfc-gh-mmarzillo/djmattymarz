@@ -215,7 +215,7 @@ class ElevenLabsService: ObservableObject {
         return result
     }
     
-    func previewVoice(voiceId: String, text: String = "Now batting... number 7... Center Field... Mickey Mantle!") {
+    func previewVoice(voiceId: String, text: String = "Now batting... number 14... First Base... Paul Konerko!") {
         generateSpeech(text: text, voiceId: voiceId) { [weak self] result in
             switch result {
             case .success(let url):
