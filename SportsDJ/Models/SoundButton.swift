@@ -11,8 +11,8 @@ enum MusicSource: String, Codable {
 struct VoiceOverSettings: Codable, Equatable, Hashable {
     var enabled: Bool = false
     var text: String = ""
-    var voiceType: VoiceType = .system // iOS TTS vs ElevenLabs
-    var voiceIdentifier: String? = nil // nil = default system voice, or ElevenLabs voice ID
+    var voiceType: VoiceType = .elevenLabs // ElevenLabs is PRIMARY
+    var voiceIdentifier: String? = nil // nil = default, or ElevenLabs/iOS voice ID
     var rate: Float = 0.5  // 0.0-1.0, AVSpeechUtterance default is ~0.5
     var pitch: Float = 1.0 // 0.5-2.0, default 1.0
     var volume: Float = 1.0 // 0.0-1.0
@@ -30,7 +30,7 @@ enum VoiceType: String, Codable {
 struct Voice: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String // User-friendly name like "Stadium Announcer", "Casual Voice"
-    var voiceType: VoiceType = .system // Which TTS engine to use
+    var voiceType: VoiceType = .elevenLabs // ElevenLabs is PRIMARY, iOS is fallback
     var voiceIdentifier: String? = nil // iOS voice ID or ElevenLabs voice ID
     var rate: Float = 0.5  // 0.0-1.0 (only for system voices)
     var pitch: Float = 1.0 // 0.5-2.0 (only for system voices)
@@ -38,7 +38,7 @@ struct Voice: Identifiable, Codable, Hashable {
     var preDelay: Double = 0 // seconds before speaking
     var postDelay: Double = 0.5 // seconds after speaking
     
-    init(name: String, voiceType: VoiceType = .system, voiceIdentifier: String? = nil, rate: Float = 0.5, pitch: Float = 1.0, volume: Float = 1.0, preDelay: Double = 0, postDelay: Double = 0.5) {
+    init(name: String, voiceType: VoiceType = .elevenLabs, voiceIdentifier: String? = nil, rate: Float = 0.5, pitch: Float = 1.0, volume: Float = 1.0, preDelay: Double = 0, postDelay: Double = 0.5) {
         self.name = name
         self.voiceType = voiceType
         self.voiceIdentifier = voiceIdentifier

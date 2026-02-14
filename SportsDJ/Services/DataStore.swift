@@ -63,11 +63,12 @@ class DataStore: ObservableObject {
             saveCategories()
         }
         
-        // Create default voice for new users
+        // Create default voice for new users - ElevenLabs Josh (best announcer voice)
         if voices.isEmpty {
             let defaultVoice = Voice(
-                name: "Stadium Announcer",
-                voiceIdentifier: nil, // Uses SpeechService's best announcer voice
+                name: "Josh (AI)",
+                voiceType: .elevenLabs,
+                voiceIdentifier: "TxGEqnHWrfWFTfGW9XjX", // Josh - authoritative sports announcer
                 rate: 0.5,
                 pitch: 1.0,
                 volume: 1.0,
@@ -76,6 +77,12 @@ class DataStore: ObservableObject {
             )
             voices.append(defaultVoice)
             saveVoices()
+            
+            // Auto-assign to first team
+            if let firstTeam = teamEvents.first {
+                teamEvents[0].voiceID = defaultVoice.id
+                saveEvents()
+            }
         }
     }
     

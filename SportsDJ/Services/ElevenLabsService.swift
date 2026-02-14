@@ -216,28 +216,39 @@ class ElevenLabsService: ObservableObject {
     }
     
     func previewVoice(voiceId: String, text: String = "Now batting... number 14... First Base... Paul Konerko!") {
+        // CRITICAL: Stop any currently playing audio first
+        stopAudio()
+        
+        print("[ElevenLabs] previewVoice called - voiceId: \(voiceId)")
+        
         generateSpeech(text: text, voiceId: voiceId) { [weak self] result in
             switch result {
             case .success(let url):
+                print("[ElevenLabs] Preview audio ready, playing from: \(url)")
                 self?.playAudio(url: url)
             case .failure(let error):
-                print("ElevenLabs preview error: \(error)")
+                print("[ElevenLabs] Preview error: \(error)")
             }
         }
     }
     
     private func playAudio(url: URL) {
+        // Stop any existing playback
+        audioPlayer?.stop()
+        audioPlayer = nil
+        
         do {
-            print("[ElevenLabs] playAudio called with URL: \(url)")
+            print("[ElevenLabs] playAudio - URL: \(url)")
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
             
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer?.volume = 1.0
+            audioPlayer?.prepareToPlay()
             let success = audioPlayer?.play() ?? false
-            print("[ElevenLabs] Audio playback started: \(success), duration: \(audioPlayer?.duration ?? 0)s")
+            print("[ElevenLabs] Playback started: \(success), duration: \(audioPlayer?.duration ?? 0)s")
         } catch {
-            print("[ElevenLabs] ERROR: Audio playback error - \(error)")
+            print("[ElevenLabs] ERROR: Playback failed - \(error)")
         }
     }
     
