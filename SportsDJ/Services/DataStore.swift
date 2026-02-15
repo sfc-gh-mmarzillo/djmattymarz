@@ -395,10 +395,13 @@ class DataStore: ObservableObject {
         } else if let voice = teamVoice {
             settings = voice.toVoiceOverSettings(text: player.announcementText)
         } else {
+            // FALLBACK: Use default ElevenLabs voice (Adam) when no team voice is set
+            // This ensures ElevenLabs is ALWAYS used, never iOS robot voice
             settings = VoiceOverSettings(
                 enabled: true,
                 text: player.announcementText,
-                voiceIdentifier: nil,
+                voiceType: .elevenLabs,
+                voiceIdentifier: "pNInz6obpgDQGcFmaJgB", // Adam - default announcer voice
                 rate: 0.5,
                 pitch: 1.0,
                 volume: 1.0,
@@ -476,10 +479,13 @@ class DataStore: ObservableObject {
         if let voice = teamVoice {
             settings = voice.toVoiceOverSettings(text: player.announcementText)
         } else {
+            // FALLBACK: Use default ElevenLabs voice (Adam) when no team voice is set
+            // This ensures ElevenLabs is ALWAYS used, never iOS robot voice
             settings = VoiceOverSettings(
                 enabled: true,
                 text: player.announcementText,
-                voiceIdentifier: nil,
+                voiceType: .elevenLabs,
+                voiceIdentifier: "pNInz6obpgDQGcFmaJgB", // Adam - default announcer voice
                 rate: 0.5,
                 pitch: 1.0,
                 volume: 1.0,

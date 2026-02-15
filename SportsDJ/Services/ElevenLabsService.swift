@@ -50,6 +50,29 @@ class ElevenLabsService: ObservableObject {
         loadMonthlyUsage()
         availableVoices = defaultVoices
         fetchVoices()
+        
+        // Clear old v2 cache files (they have the truncation bug)
+        clearOldCacheVersions()
+    }
+    
+    // Remove old cache files that used broken v2 key format
+    private func clearOldCacheVersions() {
+        guard let files = try? fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil) else { return }
+        
+        var removedCount = 0
+        for file in files {
+            let filename = file.lastPathComponent
+            // v3 keys start with "djM_" (base64 of "v3_") - keep those
+            // Remove anything else (old v2 keys, etc.)
+            if !filename.hasPrefix("djM_") {
+                try? fileManager.removeItem(at: file)
+                removedCount += 1
+            }
+        }
+        
+        if removedCount > 0 {
+            print("[ElevenLabs] Cleared \\(removedCount) old cache files")
+        }
     }
     
     var canGenerate: Bool {
@@ -70,13 +93,16 @@ class ElevenLabsService: ObservableObject {
     }
     
     func getCacheKey(text: String, voiceId: String) -> String {
-        // v2 cache key - invalidates old rushed audio
-        let combined = "v2_\(text)_\(voiceId)"
+        // v3 cache key - FIXED: voiceId MUST be part of the key to differentiate voices
+        // Put voiceId FIRST so it's never truncated, use shorter prefix of text
+        let textPrefix = String(text.prefix(30))
+        let combined = "v3_\(voiceId)_\(textPrefix)"
         let data = Data(combined.utf8)
-        return data.base64EncodedString()
+        // Use longer prefix (80 chars) to ensure voice ID is always included
+        return String(data.base64EncodedString()
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "+", with: "-")
-            .prefix(50) + ".mp3"
+            .prefix(80)) + ".mp3"
     }
     
     func getCachedAudioURL(text: String, voiceId: String) -> URL? {

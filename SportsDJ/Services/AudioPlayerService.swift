@@ -209,22 +209,44 @@ class AudioPlayerService: ObservableObject {
     /// Fetches the current team voice settings at playback time
     /// This ensures players always use the team's assigned voice, even if changed after player creation
     private func getLiveVoiceSettings(for button: SoundButton, baseSettings: VoiceOverSettings) -> VoiceOverSettings {
-        // If no data store reference or no event ID, use stored settings
+        // If no data store reference or no event ID, check if base settings has valid ElevenLabs
         guard let dataStore = dataStore,
-              let eventID = button.eventID,
-              let teamVoice = dataStore.voiceForTeam(eventID) else {
-            print("[AudioPlayer] Using stored voice settings (no team voice found)")
-            return baseSettings
+              let eventID = button.eventID else {
+            print("[AudioPlayer] No dataStore or eventID, checking base settings")
+            return ensureElevenLabsVoice(baseSettings)
         }
         
-        // Build new voice settings from team's current voice
-        var liveSettings = teamVoice.toVoiceOverSettings(text: baseSettings.text)
-        liveSettings.enabled = baseSettings.enabled
-        liveSettings.preDelay = baseSettings.preDelay
-        liveSettings.postDelay = baseSettings.postDelay
+        // Try to get team voice
+        if let teamVoice = dataStore.voiceForTeam(eventID) {
+            // Build new voice settings from team's current voice
+            var liveSettings = teamVoice.toVoiceOverSettings(text: baseSettings.text)
+            liveSettings.enabled = baseSettings.enabled
+            liveSettings.preDelay = baseSettings.preDelay
+            liveSettings.postDelay = baseSettings.postDelay
+            
+            print("[AudioPlayer] Using live team voice: \(teamVoice.name), type: \(liveSettings.voiceType), id: \(liveSettings.voiceIdentifier ?? "nil")")
+            return liveSettings
+        }
         
-        print("[AudioPlayer] Using live team voice: \(teamVoice.name), type: \(liveSettings.voiceType), id: \(liveSettings.voiceIdentifier ?? "nil")")
-        return liveSettings
+        // No team voice found - ensure we still use ElevenLabs with default voice
+        print("[AudioPlayer] No team voice found, using default ElevenLabs voice")
+        return ensureElevenLabsVoice(baseSettings)
+    }
+    
+    /// Ensures voice settings use ElevenLabs with a valid voice ID
+    /// Falls back to Adam (default announcer) if no valid ElevenLabs voice ID is set
+    private func ensureElevenLabsVoice(_ settings: VoiceOverSettings) -> VoiceOverSettings {
+        // If already has valid ElevenLabs voice, use it
+        if settings.voiceType == .elevenLabs && settings.voiceIdentifier != nil {
+            return settings
+        }
+        
+        // Create settings with default ElevenLabs voice (Adam)
+        var newSettings = settings
+        newSettings.voiceType = .elevenLabs
+        newSettings.voiceIdentifier = "pNInz6obpgDQGcFmaJgB" // Adam - default announcer voice
+        print("[AudioPlayer] Applied default ElevenLabs voice: Adam")
+        return newSettings
     }
     
     // MARK: - Voice Only Playback (for lineup announcements without song)
