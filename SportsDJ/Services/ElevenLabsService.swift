@@ -89,13 +89,20 @@ class ElevenLabsService: ObservableObject {
     }
     
     func generateSpeech(text: String, voiceId: String, completion: @escaping (Result<URL, Error>) -> Void) {
-        print("[ElevenLabs] generateSpeech called - text: '\(text.prefix(30))...', voiceId: \(voiceId)")
+        // Find voice name for logging
+        let voiceName = defaultVoices.first { $0.id == voiceId }?.name ?? "Unknown"
+        print("[ElevenLabs] === GENERATE SPEECH ===")
+        print("[ElevenLabs] Voice: \(voiceName) (ID: \(voiceId))")
+        print("[ElevenLabs] Text: '\(text.prefix(50))...'")
+        print("[ElevenLabs] Cache key: \(getCacheKey(text: text, voiceId: voiceId))")
         
         if let cachedURL = getCachedAudioURL(text: text, voiceId: voiceId) {
-            print("[ElevenLabs] Found cached audio at: \(cachedURL)")
+            print("[ElevenLabs] CACHE HIT: \(cachedURL.lastPathComponent)")
             completion(.success(cachedURL))
             return
         }
+        
+        print("[ElevenLabs] CACHE MISS - Making API request...")
         
         let key = apiKey
         print("[ElevenLabs] API key present: \(!key.isEmpty), canGenerate: \(canGenerate)")

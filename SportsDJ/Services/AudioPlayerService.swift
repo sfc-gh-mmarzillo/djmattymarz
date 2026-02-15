@@ -274,15 +274,23 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    /// ElevenLabs crossfade: Both voice and music through AVAudioPlayer for true independent volume
+    /// ElevenLabs crossfade: Voice plays while music fades in underneath
+    /// KEY FIX: Start music preparation IMMEDIATELY while voice loads, then sync playback
     private func playElevenLabsWithMusicCrossfade(button: SoundButton, voiceOver: VoiceOverSettings) {
         guard let voiceId = voiceOver.voiceIdentifier else {
             print("[AudioPlayer] ERROR: No voice ID for ElevenLabs")
             return
         }
         
-        print("[AudioPlayer] Loading ElevenLabs audio...")
+        print("[AudioPlayer] === CROSSFADE START ===")
+        print("[AudioPlayer] Voice ID: \(voiceId)")
+        print("[AudioPlayer] Text: \(voiceOver.text)")
         
+        // STEP 1: Pre-prepare music immediately (don't wait for voice to load)
+        // This eliminates the latency from prepareToPlay callback
+        prepareMusicForCrossfade(button: button)
+        
+        // STEP 2: Load and play voice audio
         elevenLabsService.generateSpeech(text: voiceOver.text, voiceId: voiceId) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -291,21 +299,21 @@ class AudioPlayerService: ObservableObject {
                 case .success(let audioURL):
                     print("[AudioPlayer] ElevenLabs audio ready: \(audioURL)")
                     
-                    // Get voice duration for adaptive timing
+                    // Get voice duration for timing
                     let voiceDuration = self.getAudioDuration(url: audioURL) ?? 4.0
                     print("[AudioPlayer] Voice duration: \(voiceDuration)s")
                     
-                    // Start voice at full volume
+                    // Start voice immediately
                     self.playElevenLabsAudioForCrossfade(url: audioURL)
                     
-                    // Start music shortly after "Now batting..." (~1.0s into announcement)
-                    // Music starts ducked, rises over the remaining announcement
-                    let musicStartDelay = min(1.0, voiceDuration * 0.25)
-                    let fadeInDuration = max(2.0, voiceDuration - musicStartDelay)
+                    // STEP 3: Start ducked music after ~0.8s (during "Now batting...")
+                    // Music is already prepared, so this starts instantly
+                    let musicStartDelay = 0.8
+                    let fadeInDuration = max(2.5, voiceDuration - musicStartDelay + 0.5)
                     
                     DispatchQueue.main.asyncAfter(deadline: .now() + musicStartDelay) {
-                        print("[AudioPlayer] === STARTING DUCKED MUSIC ===")
-                        self.playMusicForLineupWithDucking(button: button, fadeInDuration: fadeInDuration)
+                        print("[AudioPlayer] === STARTING DUCKED MUSIC (pre-prepared) ===")
+                        self.startPreparedMusicWithDucking(button: button, fadeInDuration: fadeInDuration)
                     }
                     
                 case .failure(let error):
@@ -314,11 +322,74 @@ class AudioPlayerService: ObservableObject {
                     self.speechService.speak(settings: settings, completion: nil)
                     
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        self.playMusicForLineupWithDucking(button: button)
+                        self.startPreparedMusicWithDucking(button: button, fadeInDuration: 3.0)
                     }
                 }
             }
         }
+    }
+    
+    /// Pre-prepare music for crossfade (called BEFORE voice loads to eliminate latency)
+    private func prepareMusicForCrossfade(button: SoundButton) {
+        guard button.musicSource == .appleMusic else { return }
+        guard let song = fetchSong(persistentID: button.songPersistentID) else {
+            print("[AudioPlayer] ERROR: Could not find song for preparation")
+            return
+        }
+        
+        print("[AudioPlayer] Pre-preparing music: \(song.title ?? "Unknown")")
+        currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
+        
+        let collection = MPMediaItemCollection(items: [song])
+        musicPlayer.setQueue(with: collection)
+        
+        targetStartTime = button.startTimeSeconds
+        hasSetStartTime = false
+        
+        // Just prepare, don't play yet
+        musicPlayer.prepareToPlay { error in
+            if let error = error {
+                print("[AudioPlayer] Pre-prepare error: \(error)")
+            } else {
+                print("[AudioPlayer] Music pre-prepared and ready")
+            }
+        }
+    }
+    
+    /// Start pre-prepared music with ducking (no latency from preparation)
+    private func startPreparedMusicWithDucking(button: SoundButton, fadeInDuration: Double) {
+        guard button.musicSource == .appleMusic else {
+            playSpotify(button: button)
+            return
+        }
+        
+        guard let song = fetchSong(persistentID: button.songPersistentID) else {
+            print("[AudioPlayer] ERROR: Could not find song")
+            return
+        }
+        
+        // Capture current volume, set initial ducked volume
+        let audioSession = AVAudioSession.sharedInstance()
+        let targetVolume = audioSession.outputVolume
+        let startVolume: Float = targetVolume * 0.12  // Start at 12% for better ducking
+        
+        print("[AudioPlayer] Starting ducked music: start=\(startVolume), target=\(targetVolume)")
+        
+        // Set initial low volume
+        setSystemVolume(startVolume)
+        
+        // Start playback immediately (already prepared)
+        musicPlayer.currentPlaybackTime = button.startTimeSeconds
+        hasSetStartTime = true
+        musicPlayer.play()
+        
+        print("[AudioPlayer] Music playing at \(button.startTimeSeconds)s")
+        
+        duration = song.playbackDuration
+        startTimer()
+        
+        // Smooth fade from ducked to full volume
+        fadeInMusicSmooth(from: startVolume, to: targetVolume, duration: fadeInDuration)
     }
     
     /// Get audio file duration

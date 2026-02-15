@@ -269,12 +269,17 @@ struct VoicesManagementView: View {
         // Create or update the voice for this team
         let voiceName = "\(elevenLabsVoice.name) (AI)"
         
+        print("[VoicesView] Selecting ElevenLabs voice: \(elevenLabsVoice.name) (ID: \(elevenLabsVoice.id))")
+        
         // Check if we already have a voice for this team we can update
         if var existingVoice = currentVoice {
+            print("[VoicesView] Updating existing voice from \(existingVoice.voiceIdentifier ?? "nil") to \(elevenLabsVoice.id)")
             existingVoice.name = voiceName
             existingVoice.voiceType = .elevenLabs
             existingVoice.voiceIdentifier = elevenLabsVoice.id
             dataStore.updateVoice(existingVoice)
+            // CRITICAL: Also trigger precaching with new voice ID
+            dataStore.assignVoiceToTeam(voiceID: existingVoice.id, teamID: teamID)
         } else {
             // Create new voice and assign to team
             let newVoice = Voice(
