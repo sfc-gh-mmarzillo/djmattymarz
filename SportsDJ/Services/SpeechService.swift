@@ -162,6 +162,16 @@ class SpeechService: NSObject, ObservableObject {
     // MARK: - Preview
     
     func previewVoice(text: String, settings: VoiceOverSettings) {
+        // Check if this should use ElevenLabs
+        if settings.voiceType == .elevenLabs, let voiceId = settings.voiceIdentifier {
+            print("[SpeechService] Preview using ElevenLabs voice: \(voiceId)")
+            // Route to ElevenLabs for preview
+            ElevenLabsService.shared.previewVoice(voiceId: voiceId, text: text)
+            return
+        }
+        
+        // Fall back to iOS TTS
+        print("[SpeechService] Preview using iOS TTS")
         var previewSettings = settings
         previewSettings.text = text
         previewSettings.enabled = true

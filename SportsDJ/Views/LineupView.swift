@@ -621,29 +621,25 @@ struct EditPlayerView: View {
         updatedPlayer.number = playerNumber
         updatedPlayer.position = position.isEmpty ? nil : position
         
-        // Update the associated sound button
-        if let soundID = player.announcementSoundID,
-           var sound = dataStore.buttons.first(where: { $0.id == soundID }) {
-            
-            // Update announcement text
-            sound.name = "📢 \(name)"
-            sound.voiceOver?.text = updatedPlayer.announcementText
-            
-            // Update song if selected
-            if let song = selectedSong {
-                sound.songPersistentID = song.persistentID
-                sound.startTimeSeconds = startTime
-                sound.isVoiceOnly = false
-            } else {
-                sound.songPersistentID = 0
-                sound.startTimeSeconds = 0
-                sound.isVoiceOnly = true
-            }
-            
-            dataStore.updateButton(sound)
+        // CRITICAL: Update the Player model with song info so it persists
+        // This is needed for updatePlayerSound to work correctly when voice changes
+        if let song = selectedSong {
+            updatedPlayer.songPersistentID = song.persistentID
+            updatedPlayer.musicSource = .appleMusic
+            updatedPlayer.songStartTimeSeconds = startTime
+        } else {
+            updatedPlayer.songPersistentID = nil
+            updatedPlayer.musicSource = nil
+            updatedPlayer.songStartTimeSeconds = 0
         }
         
+        // Save the player FIRST (so updatePlayerSound has correct data)
         dataStore.updatePlayer(updatedPlayer)
+        
+        // Now update the sound button through the proper method
+        // This ensures voice settings and isLineupAnnouncement are set correctly
+        dataStore.updatePlayerSound(updatedPlayer)
+        
         dismiss()
     }
 }

@@ -342,10 +342,12 @@ struct AddPlayerView: View {
             if let voice = teamVoice {
                 settings = voice.toVoiceOverSettings(text: announcementText)
             } else {
+                // FALLBACK: Use default ElevenLabs voice (Adam) - never iOS robot
                 settings = VoiceOverSettings(
                     enabled: true,
                     text: announcementText,
-                    voiceIdentifier: nil,
+                    voiceType: .elevenLabs,
+                    voiceIdentifier: "pNInz6obpgDQGcFmaJgB", // Adam
                     rate: 0.5,
                     pitch: 1.0,
                     volume: 1.0,
