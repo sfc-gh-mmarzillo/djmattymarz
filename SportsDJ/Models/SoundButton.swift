@@ -53,6 +53,12 @@ struct Voice: Identifiable, Codable, Hashable {
         voiceType == .elevenLabs
     }
     
+    // Convenience property for ElevenLabs voice ID (returns voiceIdentifier when type is elevenLabs)
+    var elevenLabsID: String? {
+        guard voiceType == .elevenLabs else { return nil }
+        return voiceIdentifier
+    }
+    
     // Convert to VoiceOverSettings for use with a specific announcement text
     func toVoiceOverSettings(text: String) -> VoiceOverSettings {
         return VoiceOverSettings(

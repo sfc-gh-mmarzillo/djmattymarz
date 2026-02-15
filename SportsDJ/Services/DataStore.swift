@@ -214,6 +214,11 @@ class DataStore: ObservableObject {
     func selectEvent(_ event: TeamEvent?) {
         selectedEventID = event?.id
         UserDefaults.standard.set(selectedEventID?.uuidString, forKey: selectedEventKey)
+        
+        // Pre-cache audio for the newly selected team's players
+        if let eventID = event?.id {
+            precacheTeamPlayerAudio(teamID: eventID)
+        }
     }
     
     func moveEvent(from source: IndexSet, to destination: Int) {
@@ -265,6 +270,58 @@ class DataStore: ObservableObject {
             
             // Update all existing players' announcement sounds with new voice
             updateAllPlayerSoundsForTeam(teamID: teamID)
+            
+            // Pre-cache ElevenLabs audio for all players in this team
+            precacheTeamPlayerAudio(teamID: teamID)
+        }
+    }
+    
+    // Pre-cache ElevenLabs audio for all players in a team
+    private func precacheTeamPlayerAudio(teamID: UUID) {
+        guard let voice = voiceForTeam(teamID),
+              voice.voiceType == .elevenLabs,
+              let elevenLabsId = voice.elevenLabsID else {
+            print("[DataStore] Precache: Skipping - not an ElevenLabs voice")
+            return
+        }
+        
+        let teamPlayers = players.filter { $0.teamEventID == teamID }
+        guard !teamPlayers.isEmpty else {
+            print("[DataStore] Precache: No players in team")
+            return
+        }
+        
+        print("[DataStore] Precache: Starting for \(teamPlayers.count) players with voice \(voice.name)")
+        
+        let announcements = teamPlayers.map { player in
+            (text: player.announcementText, voiceId: elevenLabsId)
+        }
+        
+        ElevenLabsService.shared.precachePlayerAnnouncements(players: announcements)
+    }
+    
+    // Pre-cache all ElevenLabs audio for all teams on app startup
+    // This ensures offline playback works immediately without network dependency
+    func precacheAllPlayerAudio() {
+        print("[DataStore] Startup precache: Checking all teams...")
+        
+        for team in teamEvents {
+            guard let voice = voiceForTeam(team.id),
+                  voice.voiceType == .elevenLabs,
+                  let elevenLabsId = voice.elevenLabsID else {
+                continue
+            }
+            
+            let teamPlayers = players.filter { $0.teamEventID == team.id }
+            guard !teamPlayers.isEmpty else { continue }
+            
+            print("[DataStore] Startup precache: Team '\(team.name)' - \(teamPlayers.count) players")
+            
+            let announcements = teamPlayers.map { player in
+                (text: player.announcementText, voiceId: elevenLabsId)
+            }
+            
+            ElevenLabsService.shared.precachePlayerAnnouncements(players: announcements)
         }
     }
     
@@ -392,7 +449,22 @@ class DataStore: ObservableObject {
         players.append(newPlayer)
         savePlayers()
         
+        // Pre-cache ElevenLabs audio for instant playback
+        precachePlayerAudio(newPlayer)
+        
         return newPlayer
+    }
+    
+    // Pre-cache ElevenLabs audio for a single player
+    private func precachePlayerAudio(_ player: Player) {
+        guard let voice = voiceForTeam(player.teamEventID),
+              voice.voiceType == .elevenLabs,
+              let elevenLabsId = voice.elevenLabsID else {
+            return
+        }
+        
+        print("[DataStore] Precache: Generating audio for new player '\(player.name)'")
+        ElevenLabsService.shared.precacheAudio(text: player.announcementText, voiceId: elevenLabsId)
     }
     
     func updatePlayerSound(_ player: Player) {
@@ -428,6 +500,9 @@ class DataStore: ObservableObject {
         buttons[soundIndex].isLineupAnnouncement = hasSong
         
         saveButtons()
+        
+        // Pre-cache the updated announcement audio
+        precachePlayerAudio(player)
     }
     
     // MARK: - Default Settings Methods

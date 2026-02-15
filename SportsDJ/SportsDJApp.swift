@@ -19,6 +19,10 @@ struct SportsDJApp: App {
                 .onAppear {
                     // Connect audio player to data store for dynamic voice lookup
                     audioPlayer.dataStore = dataStore
+                    
+                    // Pre-cache ElevenLabs audio for all existing players on startup
+                    // This ensures offline playback works immediately
+                    dataStore.precacheAllPlayerAudio()
                 }
                 .onOpenURL { url in
                     // Handle Spotify callback URL

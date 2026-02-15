@@ -257,6 +257,38 @@ class ElevenLabsService: ObservableObject {
         audioPlayer = nil
     }
     
+    // Pre-cache audio in background (doesn't play, just generates and caches)
+    func precacheAudio(text: String, voiceId: String) {
+        // Check if already cached
+        if getCachedAudioURL(text: text, voiceId: voiceId) != nil {
+            print("[ElevenLabs] Precache: Already cached - '\(text.prefix(30))...'")
+            return
+        }
+        
+        print("[ElevenLabs] Precache: Generating audio for '\(text.prefix(30))...'")
+        
+        generateSpeech(text: text, voiceId: voiceId) { result in
+            switch result {
+            case .success(let url):
+                print("[ElevenLabs] Precache: SUCCESS - cached at \(url.lastPathComponent)")
+            case .failure(let error):
+                print("[ElevenLabs] Precache: FAILED - \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    // Pre-cache multiple announcements in background
+    func precachePlayerAnnouncements(players: [(text: String, voiceId: String)]) {
+        print("[ElevenLabs] Precache: Starting batch precache for \(players.count) players")
+        
+        for (index, player) in players.enumerated() {
+            // Stagger requests slightly to avoid rate limiting
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.3) {
+                self.precacheAudio(text: player.text, voiceId: player.voiceId)
+            }
+        }
+    }
+    
     func clearCache() {
         try? fileManager.removeItem(at: cacheDirectory)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
