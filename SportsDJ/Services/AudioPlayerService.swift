@@ -245,33 +245,87 @@ class AudioPlayerService: ObservableObject {
     // MARK: - Lineup Announcement Playback (voice + song with professional crossfade)
     
     /// Plays lineup announcement with smooth audio transition:
-    /// 1. Voice announcement starts at full volume
-    /// 2. Music begins softly partway through announcement  
-    /// 3. Music volume rises smoothly as voice finishes
+    /// 1. Voice announcement starts
+    /// 2. After "Now batting..." (about 1 second), music begins fading in softly
+    /// 3. Music volume rises smoothly while announcer says position, number, name
     /// This creates the iconic stadium announcer experience
     private func playLineupAnnouncement(button: SoundButton, voiceOver: VoiceOverSettings) {
         isSpeakingVoiceOver = true
         isPlaying = true
         
-        print("[AudioPlayer] Starting lineup announcement with crossfade transition")
+        print("[AudioPlayer] === LINEUP ANNOUNCEMENT START ===")
+        print("[AudioPlayer] Voice type: \(voiceOver.voiceType), identifier: \(voiceOver.voiceIdentifier ?? "nil")")
+        print("[AudioPlayer] Text: \(voiceOver.text)")
         
-        // For ElevenLabs, we need to estimate duration; for iOS TTS we can monitor
         let isElevenLabs = voiceOver.voiceType == .elevenLabs && voiceOver.voiceIdentifier != nil
         
         if isElevenLabs {
-            // ElevenLabs: Start music 1.5 seconds after voice begins, fade in over 2 seconds
-            speakWithBestVoice(text: voiceOver.text, settings: voiceOver, completion: nil)
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.playMusicWithFadeIn(button: button, fadeInDuration: 2.0)
-            }
+            // ElevenLabs: Need to wait for audio to load, THEN start music timer
+            playElevenLabsWithMusicCrossfade(button: button, voiceOver: voiceOver)
         } else {
-            // iOS TTS: Start music 0.8 seconds after voice begins
+            // iOS TTS: Starts immediately, so we can time from now
             speakWithBestVoice(text: voiceOver.text, settings: voiceOver, completion: nil)
             
+            // Start music 0.8 seconds after voice begins
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                print("[AudioPlayer] iOS TTS: Starting music fade-in")
                 self?.playMusicWithFadeIn(button: button, fadeInDuration: 1.5)
             }
+        }
+    }
+    
+    /// ElevenLabs announcement with properly timed music crossfade
+    /// Music starts AFTER the voice audio actually begins playing
+    private func playElevenLabsWithMusicCrossfade(button: SoundButton, voiceOver: VoiceOverSettings) {
+        guard let voiceId = voiceOver.voiceIdentifier else {
+            print("[AudioPlayer] ERROR: No voice ID for ElevenLabs")
+            return
+        }
+        
+        print("[AudioPlayer] Generating ElevenLabs audio...")
+        
+        elevenLabsService.generateSpeech(text: voiceOver.text, voiceId: voiceId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let audioURL):
+                    print("[AudioPlayer] ElevenLabs audio ready: \(audioURL)")
+                    
+                    // Start playing the voice announcement
+                    self.playElevenLabsAudioForCrossfade(url: audioURL)
+                    
+                    // NOW start the music timer - 1.2 seconds after voice ACTUALLY starts
+                    // This is when "Now batting..." finishes and position/number/name begins
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        print("[AudioPlayer] === STARTING MUSIC FADE-IN ===")
+                        self.playMusicWithFadeIn(button: button, fadeInDuration: 2.5)
+                    }
+                    
+                case .failure(let error):
+                    print("[AudioPlayer] ElevenLabs FAILED: \(error), falling back to iOS")
+                    // Fallback to iOS TTS
+                    let settings = VoiceOverSettings(enabled: true, text: voiceOver.text)
+                    self.speechService.speak(settings: settings, completion: nil)
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        self.playMusicWithFadeIn(button: button, fadeInDuration: 1.5)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Play ElevenLabs audio for crossfade scenario (no completion callback needed)
+    private func playElevenLabsAudioForCrossfade(url: URL) {
+        do {
+            elevenLabsPlayer = try AVAudioPlayer(contentsOf: url)
+            elevenLabsPlayer?.volume = 1.0
+            elevenLabsPlayer?.prepareToPlay()
+            let success = elevenLabsPlayer?.play() ?? false
+            print("[AudioPlayer] Voice playback started: \(success), duration: \(elevenLabsPlayer?.duration ?? 0)s")
+        } catch {
+            print("[AudioPlayer] ERROR playing voice: \(error)")
         }
     }
     
@@ -347,10 +401,11 @@ class AudioPlayerService: ObservableObject {
     
     private func playAppleMusicWithFadeIn(button: SoundButton, fadeInDuration: Double) {
         guard let song = fetchSong(persistentID: button.songPersistentID) else {
-            print("Could not find song for lineup")
+            print("[AudioPlayer] ERROR: Could not find song for lineup")
             return
         }
         
+        print("[AudioPlayer] Found song: \(song.title ?? "Unknown")")
         currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
         
         let collection = MPMediaItemCollection(items: [song])
@@ -359,6 +414,8 @@ class AudioPlayerService: ObservableObject {
         targetStartTime = button.startTimeSeconds
         hasSetStartTime = false
         
+        // Start at zero volume for fade-in
+        print("[AudioPlayer] Setting initial volume to 0 for fade-in")
         setSystemVolume(0)
         
         musicPlayer.prepareToPlay { [weak self] error in
@@ -366,7 +423,7 @@ class AudioPlayerService: ObservableObject {
                 guard let self = self else { return }
                 
                 if let error = error {
-                    print("Error preparing to play: \(error)")
+                    print("[AudioPlayer] ERROR preparing to play: \(error)")
                     self.restoreVolume()
                     return
                 }
@@ -375,15 +432,20 @@ class AudioPlayerService: ObservableObject {
                 self.hasSetStartTime = true
                 self.musicPlayer.play()
                 
+                print("[AudioPlayer] Music started playing at position \(button.startTimeSeconds)s")
+                
                 self.duration = song.playbackDuration
                 self.startTimer()
                 
+                print("[AudioPlayer] Starting fade-in over \(fadeInDuration) seconds")
                 self.fadeInMusic(duration: fadeInDuration)
             }
         }
     }
     
     private func fadeInMusic(duration: Double) {
+        print("[AudioPlayer] fadeInMusic called - duration: \(duration)s, initialVolume: \(initialVolume)")
+        
         let fadeSteps = 30
         let stepDuration = duration / Double(fadeSteps)
         var currentStep = 0
@@ -396,6 +458,7 @@ class AudioPlayerService: ObservableObject {
             
             currentStep += 1
             let linearProgress = Double(currentStep) / Double(fadeSteps)
+            // Ease-out curve for smooth fade
             let easedProgress = 1.0 - pow(1.0 - linearProgress, 2.5)
             let newVolume = self.initialVolume * Float(easedProgress)
             
@@ -404,6 +467,7 @@ class AudioPlayerService: ObservableObject {
             if currentStep >= fadeSteps {
                 timer.invalidate()
                 self.isSpeakingVoiceOver = false
+                print("[AudioPlayer] Fade-in complete - volume restored to \(self.initialVolume)")
             }
         }
     }
