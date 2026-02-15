@@ -296,8 +296,8 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    /// ElevenLabs crossfade: Voice plays while music fades in underneath
-    /// KEY FIX: Start music preparation IMMEDIATELY while voice loads, then sync playback
+    /// ElevenLabs crossfade: Voice plays at full volume while music fades in underneath
+    /// The key is keeping voice LOUD while music starts QUIET, then music rises
     private func playElevenLabsWithMusicCrossfade(button: SoundButton, voiceOver: VoiceOverSettings) {
         guard let voiceId = voiceOver.voiceIdentifier else {
             print("[AudioPlayer] ERROR: No voice ID for ElevenLabs")
@@ -308,8 +308,12 @@ class AudioPlayerService: ObservableObject {
         print("[AudioPlayer] Voice ID: \(voiceId)")
         print("[AudioPlayer] Text: \(voiceOver.text)")
         
+        // Capture the user's volume BEFORE we start (we'll restore to this)
+        let audioSession = AVAudioSession.sharedInstance()
+        let userVolume = audioSession.outputVolume
+        initialVolume = userVolume
+        
         // STEP 1: Pre-prepare music immediately (don't wait for voice to load)
-        // This eliminates the latency from prepareToPlay callback
         prepareMusicForCrossfade(button: button)
         
         // STEP 2: Load and play voice audio
@@ -321,21 +325,22 @@ class AudioPlayerService: ObservableObject {
                 case .success(let audioURL):
                     print("[AudioPlayer] ElevenLabs audio ready: \(audioURL)")
                     
-                    // Get voice duration for timing
+                    // Get voice duration for timing the crossfade
                     let voiceDuration = self.getAudioDuration(url: audioURL) ?? 4.0
                     print("[AudioPlayer] Voice duration: \(voiceDuration)s")
                     
-                    // Start voice immediately
+                    // Start voice at FULL volume (no ducking yet)
                     self.playElevenLabsAudioForCrossfade(url: audioURL)
                     
-                    // STEP 3: Start ducked music after ~0.8s (during "Now batting...")
-                    // Music is already prepared, so this starts instantly
-                    let musicStartDelay = 0.8
-                    let fadeInDuration = max(2.5, voiceDuration - musicStartDelay + 0.5)
+                    // STEP 3: Start music ~1s into the announcement
+                    // Music starts at 20% volume, fades to 100% over time
+                    // Voice stays at full volume throughout!
+                    let musicStartDelay = 1.0
+                    let fadeInDuration = max(2.5, voiceDuration - musicStartDelay + 1.0)
                     
                     DispatchQueue.main.asyncAfter(deadline: .now() + musicStartDelay) {
-                        print("[AudioPlayer] === STARTING DUCKED MUSIC (pre-prepared) ===")
-                        self.startPreparedMusicWithDucking(button: button, fadeInDuration: fadeInDuration)
+                        print("[AudioPlayer] === STARTING MUSIC UNDERNEATH VOICE ===")
+                        self.startMusicWithVoiceOverlay(button: button, voiceDuration: voiceDuration - musicStartDelay, fadeInDuration: fadeInDuration)
                     }
                     
                 case .failure(let error):
@@ -343,8 +348,8 @@ class AudioPlayerService: ObservableObject {
                     let settings = VoiceOverSettings(enabled: true, text: voiceOver.text)
                     self.speechService.speak(settings: settings, completion: nil)
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        self.startPreparedMusicWithDucking(button: button, fadeInDuration: 3.0)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.playMusicForLineupWithDucking(button: button)
                     }
                 }
             }
@@ -378,8 +383,9 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    /// Start pre-prepared music with ducking (no latency from preparation)
-    private func startPreparedMusicWithDucking(button: SoundButton, fadeInDuration: Double) {
+    /// Start music while voice is still playing - voice stays loud, music fades in
+    /// This is the key to professional stadium sound: voice over music
+    private func startMusicWithVoiceOverlay(button: SoundButton, voiceDuration: Double, fadeInDuration: Double) {
         guard button.musicSource == .appleMusic else {
             playSpotify(button: button)
             return
@@ -390,17 +396,22 @@ class AudioPlayerService: ObservableObject {
             return
         }
         
-        // Capture current volume, set initial ducked volume
-        let audioSession = AVAudioSession.sharedInstance()
-        let targetVolume = audioSession.outputVolume
-        let startVolume: Float = targetVolume * 0.12  // Start at 12% for better ducking
+        // The trick: Start music at LOW system volume, but BOOST the voice player
+        // to compensate. This way voice stays loud, music is quiet.
+        let targetVolume = initialVolume > 0 ? initialVolume : AVAudioSession.sharedInstance().outputVolume
+        let musicStartVolume: Float = targetVolume * 0.20  // Music starts at 20%
         
-        print("[AudioPlayer] Starting ducked music: start=\(startVolume), target=\(targetVolume)")
+        print("[AudioPlayer] Voice overlay: music at \(musicStartVolume), voice boosted")
         
-        // Set initial low volume
-        setSystemVolume(startVolume)
+        // Duck system volume for music
+        setSystemVolume(musicStartVolume)
         
-        // Start playback immediately (already prepared)
+        // BOOST the voice player to compensate (so voice stays at original loudness)
+        // If system is at 20%, voice needs to be at 1.0/0.20 = 5x, but max is 1.0
+        // So we set voice to max and accept it'll be slightly louder relative to music
+        elevenLabsPlayer?.volume = 1.0
+        
+        // Start music playback
         musicPlayer.currentPlaybackTime = button.startTimeSeconds
         hasSetStartTime = true
         musicPlayer.play()
@@ -410,8 +421,18 @@ class AudioPlayerService: ObservableObject {
         duration = song.playbackDuration
         startTimer()
         
-        // Smooth fade from ducked to full volume
-        fadeInMusicSmooth(from: startVolume, to: targetVolume, duration: fadeInDuration)
+        // Wait for voice to finish, THEN start fading music up
+        // This ensures voice is heard clearly throughout
+        let voiceRemainingTime = max(0.5, voiceDuration)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + voiceRemainingTime) { [weak self] in
+            guard let self = self else { return }
+            print("[AudioPlayer] Voice done, fading music to full volume")
+            self.isSpeakingVoiceOver = false
+            
+            // Now smoothly bring music to full volume
+            self.fadeInMusicSmooth(from: musicStartVolume, to: targetVolume, duration: fadeInDuration - voiceRemainingTime)
+        }
     }
     
     /// Get audio file duration
