@@ -49,40 +49,46 @@ class AudioPlayerService: ObservableObject {
         setupAudioSession()
         setupNotifications()
         setupSpotifyObservers()
-        setupVolumeControl()
-    }
-    
-    private func setupVolumeControl() {
-        // Create an MPVolumeView and find its slider
-        // This needs to be attached to the view hierarchy to work
-        DispatchQueue.main.async { [weak self] in
-            let volumeView = MPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 0, height: 0))
-            volumeView.isHidden = true
-            
-            // Add to key window
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first {
-                window.addSubview(volumeView)
-            }
-            
-            // Find the volume slider
-            for subview in volumeView.subviews {
-                if let slider = subview as? UISlider {
-                    self?.volumeSlider = slider
-                    break
-                }
-            }
-            
-            self?.volumeView = volumeView
-        }
     }
     
     private func setupAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            // Standard playback mode for music
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Failed to setup audio session: \(error)")
+        }
+    }
+    
+    /// Configure audio session for voice-over-music (ducking)
+    /// This makes iOS automatically lower music volume while voice plays
+    private func enableVoiceDucking() {
+        do {
+            // .duckOthers tells iOS to lower other audio (music) while we play voice
+            // .interruptSpokenAudioAndMixWithOthers ensures smooth mixing
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback,
+                mode: .spokenAudio,
+                options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
+            )
+            try AVAudioSession.sharedInstance().setActive(true)
+            print("[AudioPlayer] Voice ducking ENABLED")
+        } catch {
+            print("[AudioPlayer] Failed to enable ducking: \(error)")
+        }
+    }
+    
+    /// Restore normal audio session after voice finishes
+    private func disableVoiceDucking() {
+        do {
+            // Return to normal playback - this un-ducks the music
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setActive(true)
+            print("[AudioPlayer] Voice ducking DISABLED - music restored")
+        } catch {
+            print("[AudioPlayer] Failed to disable ducking: \(error)")
         }
     }
     
@@ -296,96 +302,62 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    /// ElevenLabs crossfade: Voice plays at full volume while music fades in underneath
-    /// The key is keeping voice LOUD while music starts QUIET, then music rises
+    /// ElevenLabs crossfade using iOS native audio ducking
+    /// The system automatically lowers music when voice plays, then restores it
     private func playElevenLabsWithMusicCrossfade(button: SoundButton, voiceOver: VoiceOverSettings) {
         guard let voiceId = voiceOver.voiceIdentifier else {
             print("[AudioPlayer] ERROR: No voice ID for ElevenLabs")
             return
         }
         
-        print("[AudioPlayer] === CROSSFADE START ===")
+        print("[AudioPlayer] === CROSSFADE WITH NATIVE DUCKING ===")
         print("[AudioPlayer] Voice ID: \(voiceId)")
         print("[AudioPlayer] Text: \(voiceOver.text)")
         
-        // Capture the user's volume BEFORE we start (we'll restore to this)
-        let audioSession = AVAudioSession.sharedInstance()
-        let userVolume = audioSession.outputVolume
-        initialVolume = userVolume
+        // STEP 1: Start music FIRST at full volume
+        startMusicForCrossfade(button: button)
         
-        // STEP 1: Pre-prepare music immediately (don't wait for voice to load)
-        prepareMusicForCrossfade(button: button)
-        
-        // STEP 2: Load and play voice audio
-        elevenLabsService.generateSpeech(text: voiceOver.text, voiceId: voiceId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let audioURL):
-                    print("[AudioPlayer] ElevenLabs audio ready: \(audioURL)")
+        // STEP 2: After music starts, load and play voice with ducking enabled
+        // Small delay to ensure music is playing before voice ducks it
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            
+            self.elevenLabsService.generateSpeech(text: voiceOver.text, voiceId: voiceId) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
                     
-                    // Get voice duration for timing the crossfade
-                    let voiceDuration = self.getAudioDuration(url: audioURL) ?? 4.0
-                    print("[AudioPlayer] Voice duration: \(voiceDuration)s")
-                    
-                    // Start voice at FULL volume (no ducking yet)
-                    self.playElevenLabsAudioForCrossfade(url: audioURL)
-                    
-                    // STEP 3: Start music ~1s into the announcement
-                    // Music starts at 20% volume, fades to 100% over time
-                    // Voice stays at full volume throughout!
-                    let musicStartDelay = 1.0
-                    let fadeInDuration = max(2.5, voiceDuration - musicStartDelay + 1.0)
-                    
-                    DispatchQueue.main.asyncAfter(deadline: .now() + musicStartDelay) {
-                        print("[AudioPlayer] === STARTING MUSIC UNDERNEATH VOICE ===")
-                        self.startMusicWithVoiceOverlay(button: button, voiceDuration: voiceDuration - musicStartDelay, fadeInDuration: fadeInDuration)
-                    }
-                    
-                case .failure(let error):
-                    print("[AudioPlayer] ElevenLabs FAILED: \(error), falling back to iOS")
-                    let settings = VoiceOverSettings(enabled: true, text: voiceOver.text)
-                    self.speechService.speak(settings: settings, completion: nil)
-                    
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        self.playMusicForLineupWithDucking(button: button)
+                    switch result {
+                    case .success(let audioURL):
+                        print("[AudioPlayer] ElevenLabs audio ready, playing with ducking")
+                        
+                        // Get voice duration so we know when to restore music
+                        let voiceDuration = self.getAudioDuration(url: audioURL) ?? 4.0
+                        
+                        // Enable ducking - this automatically lowers music
+                        self.enableVoiceDucking()
+                        
+                        // Play voice - music automatically gets quieter
+                        self.playElevenLabsAudioForCrossfade(url: audioURL)
+                        
+                        // Schedule ducking to be disabled after voice ends
+                        // This restores music to full volume
+                        DispatchQueue.main.asyncAfter(deadline: .now() + voiceDuration + 0.3) {
+                            self.disableVoiceDucking()
+                            self.isSpeakingVoiceOver = false
+                            print("[AudioPlayer] Voice done, music restored to full volume")
+                        }
+                        
+                    case .failure(let error):
+                        print("[AudioPlayer] ElevenLabs FAILED: \(error)")
+                        // Just let the music play without voice
                     }
                 }
             }
         }
     }
     
-    /// Pre-prepare music for crossfade (called BEFORE voice loads to eliminate latency)
-    private func prepareMusicForCrossfade(button: SoundButton) {
-        guard button.musicSource == .appleMusic else { return }
-        guard let song = fetchSong(persistentID: button.songPersistentID) else {
-            print("[AudioPlayer] ERROR: Could not find song for preparation")
-            return
-        }
-        
-        print("[AudioPlayer] Pre-preparing music: \(song.title ?? "Unknown")")
-        currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
-        
-        let collection = MPMediaItemCollection(items: [song])
-        musicPlayer.setQueue(with: collection)
-        
-        targetStartTime = button.startTimeSeconds
-        hasSetStartTime = false
-        
-        // Just prepare, don't play yet
-        musicPlayer.prepareToPlay { error in
-            if let error = error {
-                print("[AudioPlayer] Pre-prepare error: \(error)")
-            } else {
-                print("[AudioPlayer] Music pre-prepared and ready")
-            }
-        }
-    }
-    
-    /// Start music while voice is still playing - voice stays loud, music fades in
-    /// This is the key to professional stadium sound: voice over music
-    private func startMusicWithVoiceOverlay(button: SoundButton, voiceDuration: Double, fadeInDuration: Double) {
+    /// Start music at full volume for crossfade (voice will duck it)
+    private func startMusicForCrossfade(button: SoundButton) {
         guard button.musicSource == .appleMusic else {
             playSpotify(button: button)
             return
@@ -396,42 +368,33 @@ class AudioPlayerService: ObservableObject {
             return
         }
         
-        // The trick: Start music at LOW system volume, but BOOST the voice player
-        // to compensate. This way voice stays loud, music is quiet.
-        let targetVolume = initialVolume > 0 ? initialVolume : AVAudioSession.sharedInstance().outputVolume
-        let musicStartVolume: Float = targetVolume * 0.20  // Music starts at 20%
+        print("[AudioPlayer] Starting music: \(song.title ?? "Unknown")")
+        currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
         
-        print("[AudioPlayer] Voice overlay: music at \(musicStartVolume), voice boosted")
+        let collection = MPMediaItemCollection(items: [song])
+        musicPlayer.setQueue(with: collection)
         
-        // Duck system volume for music
-        setSystemVolume(musicStartVolume)
+        targetStartTime = button.startTimeSeconds
+        hasSetStartTime = false
         
-        // BOOST the voice player to compensate (so voice stays at original loudness)
-        // If system is at 20%, voice needs to be at 1.0/0.20 = 5x, but max is 1.0
-        // So we set voice to max and accept it'll be slightly louder relative to music
-        elevenLabsPlayer?.volume = 1.0
-        
-        // Start music playback
-        musicPlayer.currentPlaybackTime = button.startTimeSeconds
-        hasSetStartTime = true
-        musicPlayer.play()
-        
-        print("[AudioPlayer] Music playing at \(button.startTimeSeconds)s")
-        
-        duration = song.playbackDuration
-        startTimer()
-        
-        // Wait for voice to finish, THEN start fading music up
-        // This ensures voice is heard clearly throughout
-        let voiceRemainingTime = max(0.5, voiceDuration)
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + voiceRemainingTime) { [weak self] in
-            guard let self = self else { return }
-            print("[AudioPlayer] Voice done, fading music to full volume")
-            self.isSpeakingVoiceOver = false
-            
-            // Now smoothly bring music to full volume
-            self.fadeInMusicSmooth(from: musicStartVolume, to: targetVolume, duration: fadeInDuration - voiceRemainingTime)
+        musicPlayer.prepareToPlay { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("[AudioPlayer] ERROR preparing: \(error)")
+                    return
+                }
+                
+                self.musicPlayer.currentPlaybackTime = button.startTimeSeconds
+                self.hasSetStartTime = true
+                self.musicPlayer.play()
+                
+                print("[AudioPlayer] Music playing at \(button.startTimeSeconds)s")
+                
+                self.duration = song.playbackDuration
+                self.startTimer()
+            }
         }
     }
     
@@ -454,99 +417,14 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    /// Play music with professional ducking - starts quiet, rises smoothly
-    /// Uses MPMusicPlayerController but with carefully timed volume changes
+    /// Play music with ducking for iOS TTS fallback
     private func playMusicForLineupWithDucking(button: SoundButton, fadeInDuration: Double = 3.0) {
         switch button.musicSource {
         case .appleMusic:
-            playAppleMusicWithDucking(button: button, fadeInDuration: fadeInDuration)
+            // Just start the music - iOS TTS will have already enabled ducking
+            startMusicForCrossfade(button: button)
         case .spotify:
             playSpotify(button: button)
-        }
-    }
-    
-    /// Apple Music with smooth ducking fade-in
-    /// Music starts at 15% volume and rises to 100% over fadeInDuration
-    private func playAppleMusicWithDucking(button: SoundButton, fadeInDuration: Double) {
-        guard let song = fetchSong(persistentID: button.songPersistentID) else {
-            print("[AudioPlayer] ERROR: Could not find song")
-            return
-        }
-        
-        print("[AudioPlayer] Found song: \(song.title ?? "Unknown")")
-        currentArtwork = song.artwork?.image(at: CGSize(width: 100, height: 100))
-        
-        let collection = MPMediaItemCollection(items: [song])
-        musicPlayer.setQueue(with: collection)
-        
-        targetStartTime = button.startTimeSeconds
-        hasSetStartTime = false
-        
-        // Capture current volume, then set initial ducked volume
-        let audioSession = AVAudioSession.sharedInstance()
-        let targetVolume = audioSession.outputVolume
-        let startVolume: Float = targetVolume * 0.15  // Start at 15% of user's volume
-        
-        print("[AudioPlayer] Ducking: start=\(startVolume), target=\(targetVolume), duration=\(fadeInDuration)s")
-        
-        // Set initial low volume
-        setSystemVolume(startVolume)
-        
-        musicPlayer.prepareToPlay { [weak self] error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                if let error = error {
-                    print("[AudioPlayer] ERROR preparing: \(error)")
-                    self.setSystemVolume(targetVolume)
-                    return
-                }
-                
-                self.musicPlayer.currentPlaybackTime = button.startTimeSeconds
-                self.hasSetStartTime = true
-                self.musicPlayer.play()
-                
-                print("[AudioPlayer] Music playing at \(button.startTimeSeconds)s")
-                
-                self.duration = song.playbackDuration
-                self.startTimer()
-                
-                // Smooth fade from ducked to full volume
-                self.fadeInMusicSmooth(from: startVolume, to: targetVolume, duration: fadeInDuration)
-            }
-        }
-    }
-    
-    /// Ultra-smooth volume fade using high-frequency timer and easing curve
-    private func fadeInMusicSmooth(from startVolume: Float, to targetVolume: Float, duration: Double) {
-        musicFadeTimer?.invalidate()
-        
-        let startTime = CACurrentMediaTime()
-        let volumeRange = targetVolume - startVolume
-        
-        // 60fps for buttery smooth fade
-        musicFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] timer in
-            guard let self = self else {
-                timer.invalidate()
-                return
-            }
-            
-            let elapsed = CACurrentMediaTime() - startTime
-            let progress = min(1.0, elapsed / duration)
-            
-            // S-curve easing: slow start, fast middle, slow end
-            // Formula: 3t² - 2t³ (smoothstep)
-            let eased = Float(progress * progress * (3.0 - 2.0 * progress))
-            
-            let newVolume = startVolume + (volumeRange * eased)
-            self.setSystemVolume(newVolume)
-            
-            if progress >= 1.0 {
-                timer.invalidate()
-                self.musicFadeTimer = nil
-                self.isSpeakingVoiceOver = false
-                print("[AudioPlayer] Fade complete - volume at \(targetVolume)")
-            }
         }
     }
     
@@ -747,8 +625,8 @@ class AudioPlayerService: ObservableObject {
         musicFadeTimer?.invalidate()
         musicFadeTimer = nil
         
-        // Restore volume if it was changed
-        restoreVolume()
+        // Disable ducking if it was enabled
+        disableVoiceDucking()
         
         // Stop speech service and ElevenLabs
         speechService.stop()
