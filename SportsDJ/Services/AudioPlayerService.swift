@@ -346,8 +346,9 @@ class AudioPlayerService: ObservableObject {
         }
     }
     
-    /// Start music with fade-in effect using system volume
-    /// Music starts quiet and fades to user's volume level
+    /// Start music with fade-in effect
+    /// Key insight: We lower SYSTEM volume but BOOST voice player to compensate
+    /// This makes music quiet while voice stays loud
     private func startMusicWithFadeIn(button: SoundButton, fadeDuration: Double) {
         guard button.musicSource == .appleMusic else {
             playSpotify(button: button)
@@ -370,10 +371,18 @@ class AudioPlayerService: ObservableObject {
         
         // Capture user's current volume - we'll fade TO this
         let targetVolume = initialVolume > 0 ? initialVolume : AVAudioSession.sharedInstance().outputVolume
-        let startVolume: Float = targetVolume * 0.15  // Start at 15%
         
-        // Set initial low volume
-        setSystemVolume(startVolume)
+        // Music starts at 10% of target, voice stays at full
+        // We achieve this by: system at 10%, voice player boosted to compensate
+        let musicStartRatio: Float = 0.10  // Music at 10%
+        let systemStartVolume = targetVolume * musicStartRatio
+        
+        // BOOST voice to compensate for lowered system volume
+        // If system is at 10%, boost voice to 1.0 (max) to keep it loud
+        elevenLabsPlayer?.volume = 1.0
+        
+        // Set initial low system volume (affects music, but voice is boosted)
+        setSystemVolume(systemStartVolume)
         
         musicPlayer.prepareToPlay { [weak self] error in
             DispatchQueue.main.async {
@@ -381,7 +390,7 @@ class AudioPlayerService: ObservableObject {
                 
                 if let error = error {
                     print("[AudioPlayer] ERROR preparing: \(error)")
-                    self.setSystemVolume(targetVolume)  // Restore on error
+                    self.setSystemVolume(targetVolume)
                     return
                 }
                 
@@ -390,22 +399,27 @@ class AudioPlayerService: ObservableObject {
                 self.musicPlayer.play()
                 
                 print("[AudioPlayer] Music playing at \(button.startTimeSeconds)s, fading in...")
+                print("[AudioPlayer] Voice boosted to 1.0, system at \(systemStartVolume)")
                 
                 self.duration = song.playbackDuration
                 self.startTimer()
                 
-                // Smooth fade from startVolume to targetVolume
-                self.fadeInMusicVolume(from: startVolume, to: targetVolume, duration: fadeDuration)
+                // Fade system volume up while keeping voice at max
+                self.fadeInMusicWhileVoicePlays(from: systemStartVolume, to: targetVolume, duration: fadeDuration)
             }
         }
     }
     
-    /// Fade music volume smoothly using system volume
-    private func fadeInMusicVolume(from startVolume: Float, to targetVolume: Float, duration: Double) {
+    /// Fade music in while keeping voice loud
+    /// System volume rises, voice player volume stays at max
+    private func fadeInMusicWhileVoicePlays(from startVolume: Float, to targetVolume: Float, duration: Double) {
         musicFadeTimer?.invalidate()
         
         let startTime = CACurrentMediaTime()
         let volumeRange = targetVolume - startVolume
+        
+        // Keep voice at max throughout
+        elevenLabsPlayer?.volume = 1.0
         
         // 30fps for smooth fade
         musicFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { [weak self] timer in
@@ -419,8 +433,13 @@ class AudioPlayerService: ObservableObject {
             
             // Ease-out curve for natural fade
             let eased = Float(1.0 - pow(1.0 - progress, 2))
-            let newVolume = startVolume + (volumeRange * eased)
-            self.setSystemVolume(newVolume)
+            let newSystemVolume = startVolume + (volumeRange * eased)
+            
+            // Raise system volume (music gets louder)
+            self.setSystemVolume(newSystemVolume)
+            
+            // Voice stays at max (it's already louder than music due to boost)
+            self.elevenLabsPlayer?.volume = 1.0
             
             if progress >= 1.0 {
                 timer.invalidate()
