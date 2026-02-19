@@ -49,6 +49,28 @@ class AudioPlayerService: ObservableObject {
         setupAudioSession()
         setupNotifications()
         setupSpotifyObservers()
+        setupVolumeControl()
+    }
+    
+    private func setupVolumeControl() {
+        DispatchQueue.main.async { [weak self] in
+            let volumeView = MPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 0, height: 0))
+            volumeView.isHidden = true
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first {
+                window.addSubview(volumeView)
+            }
+            
+            for subview in volumeView.subviews {
+                if let slider = subview as? UISlider {
+                    self?.volumeSlider = slider
+                    break
+                }
+            }
+            
+            self?.volumeView = volumeView
+        }
     }
     
     private func setupAudioSession() {
