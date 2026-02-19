@@ -138,6 +138,20 @@ class DataStore: ObservableObject {
         saveButtons()
     }
     
+    func moveSoundButton(from fromIndex: Int, to toIndex: Int) {
+        guard fromIndex != toIndex,
+              fromIndex >= 0, fromIndex < buttons.count,
+              toIndex >= 0, toIndex < buttons.count else { return }
+        
+        let button = buttons.remove(at: fromIndex)
+        buttons.insert(button, at: toIndex)
+        
+        for i in buttons.indices {
+            buttons[i].order = i
+        }
+        saveButtons()
+    }
+    
     // MARK: - Category Methods
     
     func addCategory(_ category: Category) {

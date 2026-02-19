@@ -16,6 +16,10 @@ struct ContentView: View {
     @State private var showingVoicesView = false
     @State private var manageViewTab: ManageView.ManageTab = .events
     
+    // Drag and drop state
+    @State private var draggingButton: SoundButton?
+    @State private var dragOffset: CGSize = .zero
+    
     // Filter out Lineup sounds from main grid - they show in batting order
     var filteredButtons: [SoundButton] {
         let eventFiltered = dataStore.filteredButtons
@@ -253,7 +257,6 @@ struct ContentView: View {
     
     var soundButtonsGrid: some View {
         let buttons = filteredButtons
-        let columnCount = 3
         return LazyVGrid(columns: columns, spacing: 14) {
             ForEach(Array(buttons.enumerated()), id: \.element.id) { index, button in
                 ModernSoundButtonView(
@@ -261,15 +264,9 @@ struct ContentView: View {
                     isPlaying: audioPlayer.currentButtonID == button.id && audioPlayer.isPlaying,
                     isLoading: audioPlayer.currentButtonID == button.id && audioPlayer.isLoading,
                     isEditMode: isEditMode,
-                    isFirst: index == 0,
-                    isLast: index == buttons.count - 1,
-                    canMoveUp: index >= columnCount,
-                    canMoveDown: index < buttons.count - columnCount,
-                    onMoveLeft: { moveSoundButtonLeft(at: index) },
-                    onMoveRight: { moveSoundButtonRight(at: index) },
-                    onMoveUp: { moveSoundButtonUp(at: index) },
-                    onMoveDown: { moveSoundButtonDown(at: index) }
+                    isDragging: draggingButton?.id == button.id
                 )
+                .opacity(draggingButton?.id == button.id ? 0.5 : 1.0)
                 .onTapGesture {
                     if isEditMode {
                         editingButton = button
@@ -281,6 +278,16 @@ struct ContentView: View {
                         }
                     }
                 }
+                .onDrag {
+                    self.draggingButton = button
+                    return NSItemProvider(object: button.id.uuidString as NSString)
+                }
+                .onDrop(of: [.text], delegate: SoundButtonDropDelegate(
+                    button: button,
+                    buttons: buttons,
+                    draggingButton: $draggingButton,
+                    dataStore: dataStore
+                ))
             }
             
             // Add Sound Button in grid
@@ -449,32 +456,6 @@ struct ContentView: View {
         let players = dataStore.filteredPlayers
         guard index < players.count - 1 else { return }
         dataStore.movePlayer(from: IndexSet(integer: index), to: index + 2)
-    }
-    
-    private func moveSoundButtonLeft(at index: Int) {
-        guard index > 0 else { return }
-        dataStore.moveButton(from: IndexSet(integer: index), to: index - 1)
-    }
-    
-    private func moveSoundButtonRight(at index: Int) {
-        let buttons = filteredButtons
-        guard index < buttons.count - 1 else { return }
-        dataStore.moveButton(from: IndexSet(integer: index), to: index + 2)
-    }
-    
-    private func moveSoundButtonUp(at index: Int) {
-        let columnCount = 3
-        guard index >= columnCount else { return }
-        // Move up by column count (one full row)
-        dataStore.moveButton(from: IndexSet(integer: index), to: index - columnCount)
-    }
-    
-    private func moveSoundButtonDown(at index: Int) {
-        let buttons = filteredButtons
-        let columnCount = 3
-        guard index < buttons.count - columnCount else { return }
-        // Move down by column count (one full row)
-        dataStore.moveButton(from: IndexSet(integer: index), to: index + columnCount + 1)
     }
     
     // MARK: - Now Playing Bar
@@ -650,14 +631,7 @@ struct ModernSoundButtonView: View {
     let isPlaying: Bool
     let isLoading: Bool
     let isEditMode: Bool
-    let isFirst: Bool
-    let isLast: Bool
-    let canMoveUp: Bool    // Can move up a row
-    let canMoveDown: Bool  // Can move down a row
-    let onMoveLeft: () -> Void
-    let onMoveRight: () -> Void
-    let onMoveUp: () -> Void
-    let onMoveDown: () -> Void
+    let isDragging: Bool
     
     @State private var artwork: UIImage?
     
@@ -751,9 +725,9 @@ struct ModernSoundButtonView: View {
                 .padding(6)
             }
             
-            // Edit mode indicator with move buttons
+            // Edit mode indicator - tap to edit, drag to move
             if isEditMode {
-                VStack(spacing: 0) {
+                VStack {
                     HStack {
                         Spacer()
                         Image(systemName: "pencil.circle.fill")
@@ -765,52 +739,22 @@ struct ModernSoundButtonView: View {
                                     .frame(width: 18, height: 18)
                             )
                     }
-                    
                     Spacer()
-                    
-                    // D-pad style move buttons
-                    VStack(spacing: 2) {
-                        // Up button
-                        Button(action: onMoveUp) {
-                            Image(systemName: "chevron.up.circle.fill")
-                                .font(.caption)
-                                .foregroundColor(canMoveUp ? Color(hex: "#22c55e") : .gray.opacity(0.3))
-                        }
-                        .disabled(!canMoveUp)
-                        
-                        // Left and Right buttons
-                        HStack(spacing: 12) {
-                            Button(action: onMoveLeft) {
-                                Image(systemName: "chevron.left.circle.fill")
-                                    .font(.caption)
-                                    .foregroundColor(isFirst ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
-                            }
-                            .disabled(isFirst)
-                            
-                            Button(action: onMoveRight) {
-                                Image(systemName: "chevron.right.circle.fill")
-                                    .font(.caption)
-                                    .foregroundColor(isLast ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
-                            }
-                            .disabled(isLast)
-                        }
-                        
-                        // Down button
-                        Button(action: onMoveDown) {
-                            Image(systemName: "chevron.down.circle.fill")
-                                .font(.caption)
-                                .foregroundColor(canMoveDown ? Color(hex: "#22c55e") : .gray.opacity(0.3))
-                        }
-                        .disabled(!canMoveDown)
+                    HStack {
+                        Image(systemName: "hand.draw.fill")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                        Spacer()
                     }
                 }
                 .padding(4)
             }
         }
         .frame(height: 110)
-        .scaleEffect(isPlaying ? 1.03 : 1.0)
-        .shadow(color: isPlaying ? Color(hex: button.colorHex).opacity(0.4) : Color.clear, radius: 10)
+        .scaleEffect(isDragging ? 1.1 : (isPlaying ? 1.03 : 1.0))
+        .shadow(color: isDragging ? Color.white.opacity(0.3) : (isPlaying ? Color(hex: button.colorHex).opacity(0.4) : Color.clear), radius: isDragging ? 15 : 10)
         .animation(.spring(response: 0.3), value: isPlaying)
+        .animation(.spring(response: 0.2), value: isDragging)
         .onAppear {
             loadArtwork()
         }
@@ -1067,6 +1011,37 @@ extension Color {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+}
+
+// MARK: - Drag and Drop Delegate for Sound Buttons
+
+struct SoundButtonDropDelegate: DropDelegate {
+    let button: SoundButton
+    let buttons: [SoundButton]
+    @Binding var draggingButton: SoundButton?
+    let dataStore: DataStore
+    
+    func performDrop(info: DropInfo) -> Bool {
+        draggingButton = nil
+        return true
+    }
+    
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingButton,
+              dragging.id != button.id,
+              let fromIndex = buttons.firstIndex(where: { $0.id == dragging.id }),
+              let toIndex = buttons.firstIndex(where: { $0.id == button.id }) else {
+            return
+        }
+        
+        withAnimation(.spring(response: 0.3)) {
+            dataStore.moveSoundButton(from: fromIndex, to: toIndex)
+        }
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
     }
 }
 
