@@ -19,6 +19,7 @@ struct ContentView: View {
     // Drag and drop state
     @State private var draggingButton: SoundButton?
     @State private var dragOffset: CGSize = .zero
+    @State private var draggingPlayer: Player?
     
     // Filter out Lineup sounds from main grid - they show in batting order
     var filteredButtons: [SoundButton] {
@@ -403,13 +404,21 @@ struct ContentView: View {
                             battingOrder: index + 1,
                             isPlaying: isPlayerPlaying(player),
                             isEditMode: isEditMode,
-                            isFirst: index == 0,
-                            isLast: index == players.count - 1,
+                            isDragging: draggingPlayer?.id == player.id,
                             onPlay: { playPlayer(player) },
-                            onEdit: { editingPlayer = player },
-                            onMoveUp: { movePlayerUp(at: index) },
-                            onMoveDown: { movePlayerDown(at: index) }
+                            onEdit: { editingPlayer = player }
                         )
+                        .opacity(draggingPlayer?.id == player.id ? 0.5 : 1.0)
+                        .onDrag {
+                            self.draggingPlayer = player
+                            return NSItemProvider(object: player.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: PlayerDropDelegate(
+                            player: player,
+                            players: players,
+                            draggingPlayer: $draggingPlayer,
+                            dataStore: dataStore
+                        ))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -445,17 +454,6 @@ struct ContentView: View {
         } else {
             audioPlayer.play(button: sound)
         }
-    }
-    
-    private func movePlayerUp(at index: Int) {
-        guard index > 0 else { return }
-        dataStore.movePlayer(from: IndexSet(integer: index), to: index - 1)
-    }
-    
-    private func movePlayerDown(at index: Int) {
-        let players = dataStore.filteredPlayers
-        guard index < players.count - 1 else { return }
-        dataStore.movePlayer(from: IndexSet(integer: index), to: index + 2)
     }
     
     // MARK: - Now Playing Bar
@@ -824,32 +822,17 @@ struct BattingOrderRow: View {
     let battingOrder: Int
     let isPlaying: Bool
     let isEditMode: Bool
-    let isFirst: Bool
-    let isLast: Bool
+    let isDragging: Bool
     let onPlay: () -> Void
     let onEdit: () -> Void
-    let onMoveUp: () -> Void
-    let onMoveDown: () -> Void
     
     var body: some View {
         HStack(spacing: 12) {
-            // Move up/down buttons
-            VStack(spacing: 2) {
-                Button(action: onMoveUp) {
-                    Image(systemName: "chevron.up")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(isFirst ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
-                }
-                .disabled(isFirst)
-                
-                Button(action: onMoveDown) {
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(isLast ? .gray.opacity(0.3) : Color(hex: "#22c55e"))
-                }
-                .disabled(isLast)
-            }
-            .frame(width: 24)
+            // Drag handle (always visible for reordering)
+            Image(systemName: "line.3.horizontal")
+                .font(.caption)
+                .foregroundColor(.gray.opacity(0.5))
+                .frame(width: 24)
             
             // Batting order number
             ZStack {
@@ -921,8 +904,11 @@ struct BattingOrderRow: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(isPlaying ? Color(hex: "#22c55e").opacity(0.15) : Color.white.opacity(0.05))
+                .fill(isDragging ? Color(hex: "#22c55e").opacity(0.3) : (isPlaying ? Color(hex: "#22c55e").opacity(0.15) : Color.white.opacity(0.05)))
         )
+        .scaleEffect(isDragging ? 1.02 : 1.0)
+        .shadow(color: isDragging ? Color.white.opacity(0.2) : .clear, radius: 8)
+        .animation(.spring(response: 0.3), value: isDragging)
         .contentShape(Rectangle())
         .onTapGesture {
             if !isEditMode {
@@ -1037,6 +1023,37 @@ struct SoundButtonDropDelegate: DropDelegate {
         
         withAnimation(.spring(response: 0.3)) {
             dataStore.moveSoundButton(from: fromIndex, to: toIndex)
+        }
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
+    }
+}
+
+// MARK: - Drag and Drop Delegate for Players
+
+struct PlayerDropDelegate: DropDelegate {
+    let player: Player
+    let players: [Player]
+    @Binding var draggingPlayer: Player?
+    let dataStore: DataStore
+    
+    func performDrop(info: DropInfo) -> Bool {
+        draggingPlayer = nil
+        return true
+    }
+    
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingPlayer,
+              dragging.id != player.id,
+              let fromIndex = players.firstIndex(where: { $0.id == dragging.id }),
+              let toIndex = players.firstIndex(where: { $0.id == player.id }) else {
+            return
+        }
+        
+        withAnimation(.spring(response: 0.3)) {
+            dataStore.movePlayerDirect(from: fromIndex, to: toIndex)
         }
     }
     

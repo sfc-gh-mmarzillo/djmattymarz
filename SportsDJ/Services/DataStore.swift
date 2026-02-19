@@ -390,6 +390,24 @@ class DataStore: ObservableObject {
         savePlayers()
     }
     
+    func movePlayerDirect(from fromIndex: Int, to toIndex: Int) {
+        var currentPlayers = filteredPlayers
+        guard fromIndex != toIndex,
+              fromIndex >= 0, fromIndex < currentPlayers.count,
+              toIndex >= 0, toIndex < currentPlayers.count else { return }
+        
+        let player = currentPlayers.remove(at: fromIndex)
+        currentPlayers.insert(player, at: toIndex)
+        
+        // Update lineup order for all players in current event
+        for (index, player) in currentPlayers.enumerated() {
+            if let playerIndex = players.firstIndex(where: { $0.id == player.id }) {
+                players[playerIndex].lineupOrder = index
+            }
+        }
+        savePlayers()
+    }
+    
     private func reorderPlayersForCurrentEvent() {
         let currentPlayers = filteredPlayers
         for (index, player) in currentPlayers.enumerated() {
